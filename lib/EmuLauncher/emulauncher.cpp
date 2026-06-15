@@ -2,16 +2,19 @@
 #include <esp_task_wdt.h>
 
 
-ESP32Interface *EmulatorLauncher::interface;
-gb::GameRom *EmulatorLauncher::cartridge_data;
+std::shared_ptr<ESP32Interface> EmulatorLauncher::interface;
+std::unique_ptr<gb::GameRom> EmulatorLauncher::cartridge_data;
 gb::EmulatorConfig EmulatorLauncher::emu_cfg;
 TaskHandle_t EmulatorLauncher::task_handler;
 
 
 
-void EmulatorLauncher::init (ESP32Interface *interface, gb::GameRom *cartridge_data) {
+void EmulatorLauncher::init (
+  std::shared_ptr<ESP32Interface> interface,
+  std::unique_ptr<gb::GameRom> cartridge_data
+) {
   EmulatorLauncher::interface = interface;
-  EmulatorLauncher::cartridge_data = cartridge_data;
+  EmulatorLauncher::cartridge_data = std::move(cartridge_data);
 }
 
 
@@ -25,7 +28,7 @@ void EmulatorLauncher::launch (gb::EmulatorConfig cfg) {
     NULL,                  // Parameter to pass into the task
     1,                     // Priority (0 is lowest, 24 is highest. 1 is safe)
     &task_handler,
-    0                      // The Core ID to pin it to
+    EMULATOR_CORE          // The Core ID to pin it to
   );
 }
 
@@ -37,5 +40,13 @@ void EmulatorLauncher::launch_ (void *) {
 
   while (true) {
     vTaskDelay(1000);
+  }
+}
+
+
+void EmulatorLauncher::kill () {
+  if (EmulatorLauncher::task_handler != NULL) {
+    vTaskDelete(EmulatorLauncher::task_handler); 
+    EmulatorLauncher::task_handler = NULL; 
   }
 }
