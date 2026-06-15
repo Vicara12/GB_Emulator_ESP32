@@ -1,6 +1,7 @@
 #include "program.h"
 
 #include "SPIFFS.h"
+#include "audio.h"
 #include "emulauncher.h"
 
 
@@ -14,6 +15,7 @@ std::string Program::rom_path;
 void Program::launch_ (void*) {
   // Hardware setup
   display.init();
+  Audio::launch(Program::PROGRAM_CORE);
 
   Program::runEmulator();
 }

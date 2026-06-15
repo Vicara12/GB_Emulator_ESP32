@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <emulator/interface.h>
 #include "display.h"
+#include "audio.h"
 
 
 class ESP32Interface : public gb::HardwareInterface<ESP32Interface> {
@@ -18,7 +19,7 @@ public:
 
   inline ulong realTimeMicros () {return micros();}
 
-  inline void playAudio (const gb::AudioPacket &ap) {}
+  inline void playAudio (const gb::AudioPacket &ap) {Audio::pushData(ap);}
 
   inline void informEmuRate (float r) {Serial.println(r);};
 };
