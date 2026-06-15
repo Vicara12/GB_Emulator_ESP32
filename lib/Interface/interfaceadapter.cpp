@@ -1,0 +1,2 @@
+#include "interfaceadapter.h"
+

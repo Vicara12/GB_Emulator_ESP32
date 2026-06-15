@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <emulator/interface.h>
+#include "display.h"
 
 
 class ESP32Interface : public gb::HardwareInterface<ESP32Interface> {
