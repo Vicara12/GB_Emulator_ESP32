@@ -39,6 +39,7 @@ void Display::init () {
   fillScreen(TFT_BLACK);
 
   gb_screen->setColorDepth(16);
+  gb_screen->setPsram(false);
   gb_screen->createSprite(gb::SCREEN_PX_W, gb::SCREEN_PX_H);
   gb_screen->setPivot(0, 0);
 }
@@ -73,11 +74,12 @@ void Display::printMenu (const ScreenMenu &menu) {
 
 
 void Display::printScreen (const gb::ScreenPixels* pixels) {
+  uint16_t* raw_buffer = (uint16_t*)gb_screen->getBuffer();
+  size_t buffer_idx = 0;
   for (size_t y = 0; y < gb::SCREEN_PX_H; y++) {
     for (size_t x = 0; x < gb::SCREEN_PX_W; x++) {
-      gb_screen->drawPixel(x, y, GB_COLOR[(*pixels)[y][x]]);
+      raw_buffer[buffer_idx++] = GB_COLOR[(*pixels)[y][x]];
     }
   }
-
   gb_screen->pushRotateZoom(0, 0, 0, SCREEN_UPSCALE, SCREEN_UPSCALE);
 }

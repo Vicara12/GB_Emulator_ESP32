@@ -22,7 +22,7 @@ class Display : public lgfx::LGFX_Device {
   static constexpr size_t MAX_MENU_ITEMS = 6;
   static constexpr size_t ITEM_MARGIN = 30;
   static constexpr size_t TEXT_SIZE = 30;
-  static constexpr std::array<uint16_t,4> GB_COLOR = {0xFFFF, 0xAD55, 0x52AA, 0x0000};
+  static constexpr std::array<uint16_t,4> GB_COLOR = {0xFFFF, 0x55AD, 0xAA52, 0x0000};
   static constexpr float SCREEN_UPSCALE = 240.0 / gb::SCREEN_PX_H;
 
 
