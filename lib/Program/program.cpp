@@ -3,6 +3,7 @@
 #include "SPIFFS.h"
 #include "audio.h"
 #include "emulauncher.h"
+#include "buttons.h"
 
 
 Display Program::display;
@@ -16,6 +17,7 @@ void Program::launch_ (void*) {
   // Hardware setup
   display.init();
   Audio::launch(Program::PROGRAM_CORE);
+  Buttons::init();
 
   Program::runEmulator();
 }
@@ -47,6 +49,7 @@ void Program::runEmulator () {
 
   while (not exit_emu) {
     display.printScreen(interface->getLatestScreen());
+    interface->setButtons(Buttons::readPadButtons()); // TODO increase frequency
     delay(1000/30); // TODO update to 50 fps
     taskYIELD(); // Notify watchdog
   }
