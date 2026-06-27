@@ -1,7 +1,7 @@
 
 ## Hardware components and connections
 
-* **Microcontroller:** ESP32-S3-N16-R8
+* **Microcontroller:** ESP32-S3-N16R8
 
 * **Display:** 2.8 TFT SPI 240x320 v 1.2 no touch
   * VCC -> 5V
