@@ -36,7 +36,7 @@ void EmulatorLauncher::launch (gb::EmulatorConfig cfg) {
 void EmulatorLauncher::launch_ (void *) {
   esp_task_wdt_delete(NULL); // Disable watchdog
   esp_task_wdt_delete(xTaskGetIdleTaskHandleForCPU(0)); // Disable watchdog for idle task in core 0
-  gb::emulator<ESP32Interface, false>(*interface, *cartridge_data, emu_cfg);
+  gb::emulator<ESP32Interface, gb::BuildCfb::FastGraphics>(*interface, *cartridge_data, emu_cfg);
 
   while (true) {
     vTaskDelay(1000);

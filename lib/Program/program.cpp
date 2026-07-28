@@ -48,9 +48,11 @@ void Program::runEmulator () {
   bool exit_emu = false;
 
   while (not exit_emu) {
-    display.printScreen(interface->getLatestScreen());
+    if (interface->newScreenAvailable()) {
+      display.printScreen(interface->getLatestScreen());
+    }
     interface->setButtons(Buttons::readPadButtons()); // TODO increase frequency
-    delay(1000/30); // TODO update to 50 fps
+    delay(1000/60);
     taskYIELD(); // Notify watchdog
   }
 }

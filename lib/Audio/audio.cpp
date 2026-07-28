@@ -3,9 +3,8 @@
 
 
 std::mutex Audio::audio_mutex;
-gb::AudioPacket Audio::latest_audio;
 int16_t Audio::volume;
-std::array<int16_t, 2*gb::AUDIO_BUFFER_SIZE> Audio::sample_buffer;
+std::array<std::unique_ptr<Audio::AudioBuffer>, 3> Audio::audio_buffers;
 TaskHandle_t Audio::task_handler;
 
 
@@ -22,18 +21,15 @@ void Audio::launch_ (void*) {
 void Audio::playBuffer () {
   { // Lock scope
     std::lock_guard<std::mutex> lock(Audio::audio_mutex);
-    for (size_t i = 0; i < gb::AUDIO_BUFFER_SIZE; i++) {
-      sample_buffer[2*i]     = (int16_t(latest_audio.buffer_l[i]) - 128)*Audio::volume;
-      sample_buffer[2*i + 1] = (int16_t(latest_audio.buffer_r[i]) - 128)*Audio::volume;
-    }
+    std::swap(audio_buffers[0], audio_buffers[1]);
   }
 
   size_t bytes_written;
 
   i2s_write(
     I2S_NUM,
-    sample_buffer.data(),   // Pointer to the audio data
-    2*sample_buffer.size(), // How many bytes to send
+    (*audio_buffers[0]).data(),   // Pointer to the audio data
+    2*(*audio_buffers[0]).size(), // How many bytes to send
     &bytes_written,         // Returns how many bytes were actually written
     portMAX_DELAY
   );
@@ -42,6 +38,10 @@ void Audio::playBuffer () {
 
 void Audio::init () {
   static_assert(gb::AUDIO_BUFFER_SIZE <= 1024, "Audio buffer size larger than 1024");
+
+  for (auto &buffer_ptr : Audio::audio_buffers) {
+    buffer_ptr = std::make_unique<AudioBuffer>();
+  }
 
   // Configure the I2S peripheral
   i2s_config_t i2s_config = {
@@ -93,6 +93,10 @@ void Audio::kill () {
   if (Audio::task_handler != NULL) {
     vTaskDelete(Audio::task_handler); 
     Audio::task_handler = NULL; 
+  }
+
+  for (auto &buffer_ptr : Audio::audio_buffers) {
+    buffer_ptr = nullptr;
   }
 }
 
