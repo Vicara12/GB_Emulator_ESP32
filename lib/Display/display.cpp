@@ -1,4 +1,5 @@
 #include "display.h"
+#include <algorithm>
 
 
 Display::Display ()
@@ -45,7 +46,7 @@ void Display::init () {
 }
 
 
-void Display::printMenu (const ScreenMenu &menu) {
+void Display::printMenu (const ScreenMenu &menu, int first, int selection) {
   setTextSize(3);
   setTextColor(TFT_WHITE, TFT_BLACK);
   setCursor(MARGIN, MARGIN);
@@ -53,24 +54,47 @@ void Display::printMenu (const ScreenMenu &menu) {
 
   setTextSize(2);
 
-  size_t max_elms = menu.options.size() - menu.first;
+  size_t max_elms = menu.options.size() - first;
   if (max_elms < 0) {
     return;
   }
 
   for (int i = 0; i < std::min(MAX_MENU_ITEMS, max_elms); i++) {
-    int list_idx = i + menu.first;
+    int list_idx = i + first;
     size_t v_pos = 3*MARGIN + TEXT_SIZE*(i + 1);
-    if (list_idx == menu.selection) {
-      setCursor(2*MARGIN, v_pos);
-      println(">");
-    }
+    setCursor(2*MARGIN, v_pos);
+    println(list_idx == selection ? ">" : " ");
     setCursor(ITEM_MARGIN, v_pos);
     println(menu.options[list_idx].c_str());
   }
 }
 
 
+ScreenMenu Display::beautifyMenu (ScreenMenu &&menu) {
+  if (menu.options.size() == 0) {
+    return menu;
+  }
+
+  auto max_len_item = std::max_element(menu.options.begin(), menu.options.end(),
+    [](const std::string &a, const std::string &b) {return a.length() < b.length();}
+  );
+  auto max_len = std::min(max_len_item->size(), MAX_TEXT_LEN);
+
+  for (auto &opt : menu.options) {
+    if (opt.length() > max_len) {
+      opt = opt.substr(0, MAX_TEXT_LEN - 3) + "...";
+    }
+    else {
+      opt.append(max_len - opt.length(), ' ');
+    }
+  }
+  return menu;
+}
+
+
+void Display::clearScreen () {
+  fillScreen(TFT_BLACK);
+}
 
 
 void Display::printScreen (const gb::ScreenPixels* pixels) {

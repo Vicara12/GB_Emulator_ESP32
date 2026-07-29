@@ -11,8 +11,6 @@
 struct ScreenMenu {
   std::string title;
   std::vector<std::string> options;
-  int first = 0;
-  int selection = -1;
 };
 
 
@@ -22,6 +20,7 @@ class Display : public lgfx::LGFX_Device {
   static constexpr size_t MAX_MENU_ITEMS = 6;
   static constexpr size_t ITEM_MARGIN = 30;
   static constexpr size_t TEXT_SIZE = 30;
+  static constexpr size_t MAX_TEXT_LEN = 24;
   static constexpr std::array<uint16_t,4> GB_COLOR = {0xFFFF, 0x55AD, 0xAA52, 0x0000};
   static constexpr float SCREEN_UPSCALE = 240.0 / gb::SCREEN_PX_H;
 
@@ -36,7 +35,13 @@ public:
 
   void init ();
 
-  void printMenu (const ScreenMenu &menu);
+  void printMenu (const ScreenMenu &menu, int first, int selection);
 
   void printScreen (const gb::ScreenPixels* pixels);
+
+  void clearScreen ();
+
+  static constexpr size_t maxMenuItems() noexcept {return MAX_MENU_ITEMS;}
+
+  static ScreenMenu beautifyMenu (ScreenMenu &&menu);
 };
