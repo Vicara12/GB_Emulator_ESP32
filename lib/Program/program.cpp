@@ -97,7 +97,7 @@ void Program::mainMenu () {
     switch(selection) {
       case 0:
         Audio::beep();
-        // TODO
+        runEmulator();
         display.clearScreen();
         break;
       case 1:
@@ -116,12 +116,14 @@ void Program::optionsMenu () {
     .options = {
       "Volume",
       "Brightness",
+      "Skip logo",
       "Back"
     }
   };
   Serial.println("pre");
   options_menu.options[0] = selector(config.volume, Audio::MAX_VOL)         + " " + options_menu.options[0];
   options_menu.options[1] = selector(config.brightness, Display::MAX_BRIGHTNESS) + " " + options_menu.options[1];
+  options_menu.options[2] = (config.emu_cfg.skip_boot_room ? "[x] " : "[ ] ") + options_menu.options[2];
   bool back = false;
 
   display.clearScreen();
@@ -148,6 +150,12 @@ void Program::optionsMenu () {
         // TODO change brightness
         break;
       case 2:
+        if (button == gb::Button::Start) config.emu_cfg.skip_boot_room = not config.emu_cfg.skip_boot_room;
+        else break;
+        Audio::beep();
+        options_menu.options[2] = config.emu_cfg.skip_boot_room ? "[x] Skip logo" : "[ ] Skip logo";
+        break;
+      case 3:
         Audio::beep();
         back = true;
         break;

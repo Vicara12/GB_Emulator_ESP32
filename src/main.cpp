@@ -2,8 +2,8 @@
 #include "program.h"
 
 
-// const std::string game_path_ = "/Tetris.gb";
-const std::string game_path_ = "/Dr_Mario.gb";
+const std::string game_path_ = "/Tetris.gb";
+// const std::string game_path_ = "/Dr_Mario.gb";
 // const std::string game_path_ = "/Zelda.gb";
 // const std::string game_path_ = "/dmg-acid2.gb";
 

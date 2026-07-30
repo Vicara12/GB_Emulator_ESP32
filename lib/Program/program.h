@@ -13,7 +13,6 @@ class Program {
     int volume;
     int brightness;
     gb::EmulatorConfig emu_cfg;
-
   };
 
   static constexpr size_t PROGRAM_CORE = 0;
