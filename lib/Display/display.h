@@ -31,6 +31,8 @@ class Display : public lgfx::LGFX_Device {
 
 public:
 
+  static constexpr int MAX_BRIGHTNESS = 7;
+
   Display();
 
   void init ();

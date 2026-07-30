@@ -16,6 +16,7 @@ std::string Program::rom_path;
 
 void Program::launch_ (void*) {
   // Hardware setup
+  loadCfg();
   display.init();
   Audio::launch(Program::PROGRAM_CORE);
   Buttons::init();
@@ -63,6 +64,7 @@ void Program::runEmulator () {
 void Program::loadCfg () {
   Program::config = Program::Configuration{
     .volume = persistent.getInt("volume", 2),
+    .brightness = persistent.getInt("brightness", 7),
     .emu_cfg = gb::EmulatorConfig{
       .synch_execution = true,
       .skip_boot_room = persistent.getBool("skip_boot_room", false),
@@ -73,6 +75,7 @@ void Program::loadCfg () {
 
 void Program::storeCfg () {
   persistent.putInt("volume", config.volume);
+  persistent.putInt("brightness", config.brightness);
   persistent.putBool("skip_boot_room", config.emu_cfg.skip_boot_room);
 }
 
@@ -83,25 +86,75 @@ void Program::mainMenu () {
     .options = {
       "Select game",
       "Options",
-      "1234567890123456789012345",
-      "Extra2",
-      "Extra3",
-      "123456789012345678901234",
-      "Extra5",
-      "Extra6",
-      "Extra7",
-      "Extra8",
     }
   });
 
   while (true) {
-    int opt = renderMenu(main_menu);
+    auto [selection, button] = renderMenu(main_menu);
+    if (button != gb::Button::Start) {
+      continue;
+    }
+    switch(selection) {
+      case 0:
+        Audio::beep();
+        // TODO
+        display.clearScreen();
+        break;
+      case 1:
+        Audio::beep();
+        optionsMenu();
+        display.clearScreen();
+        break;
+    }
   }
 }
 
 
-void Program::optionsMenu (bool ingame) {
+void Program::optionsMenu () {
+  auto options_menu = ScreenMenu{
+    .title = "Options",
+    .options = {
+      "Volume",
+      "Brightness",
+      "Back"
+    }
+  };
+  Serial.println("pre");
+  options_menu.options[0] = selector(config.volume, Audio::MAX_VOL)         + " " + options_menu.options[0];
+  options_menu.options[1] = selector(config.brightness, Display::MAX_BRIGHTNESS) + " " + options_menu.options[1];
+  bool back = false;
 
+  display.clearScreen();
+  int selection = 0;
+  gb::Button button;
+
+  while (not back) {
+    std::tie(selection, button) = renderMenu(options_menu, selection);
+    switch(selection) {
+      case 0:
+        if      (button == gb::Button::Left ) config.volume = std::max(0, config.volume-1);
+        else if (button == gb::Button::Right) config.volume = std::min(Audio::MAX_VOL, config.volume+1);
+        else break;
+        Audio::setVolume(config.volume);
+        Audio::beep();
+        options_menu.options[0] = selector(config.volume, Audio::MAX_VOL) + " Volume";
+        break;
+      case 1:
+        if      (button == gb::Button::Left ) config.brightness = std::max(0, config.brightness-1);
+        else if (button == gb::Button::Right) config.brightness = std::min(Display::MAX_BRIGHTNESS, config.brightness+1);
+        else break;
+        Audio::beep();
+        options_menu.options[1] = selector(config.brightness, Display::MAX_BRIGHTNESS) + " Brightness";
+        // TODO change brightness
+        break;
+      case 2:
+        Audio::beep();
+        back = true;
+        break;
+    }
+  }
+
+  storeCfg();
 }
 
 
@@ -110,14 +163,12 @@ void Program::gameSelectMenu () {
 }
 
 
-int Program::renderMenu (const ScreenMenu& sm) {
+std::pair<int, gb::Button> Program::renderMenu (const ScreenMenu& sm, int selection) {
   int first = 0;
-  int selection = 0;
   const int n_opts = sm.options.size();
   bool entered = false;
   gb::Byte prev_button_read = 0;
-
-  display.clearScreen();
+  gb::Button pressed;
 
   while (not entered) {
     // Nice scrolling
@@ -135,7 +186,8 @@ int Program::renderMenu (const ScreenMenu& sm) {
       if (falling_edge != 0) {
         // Number of zeros to the right of the rightmost one
         int pos_one = __builtin_ctz(static_cast<unsigned int>(falling_edge));
-        switch (static_cast<gb::Button>(1 << pos_one)) {
+        pressed = static_cast<gb::Button>(1 << pos_one);
+        switch (pressed) {
           case gb::Button::Down:
             action = true;
             selection = (selection + 1) % n_opts;
@@ -144,7 +196,7 @@ int Program::renderMenu (const ScreenMenu& sm) {
             action = true;
             selection = (selection + sm.options.size() - 1) % n_opts;
             break;
-          case gb::Button::Select:
+          default:
             action = true;
             entered = true;
             break;
@@ -153,7 +205,7 @@ int Program::renderMenu (const ScreenMenu& sm) {
     }
   }
 
-  return selection;
+  return {selection, pressed};
 }
 
 

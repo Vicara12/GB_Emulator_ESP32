@@ -11,6 +11,7 @@ class Program {
 
   struct Configuration {
     int volume;
+    int brightness;
     gb::EmulatorConfig emu_cfg;
 
   };
@@ -35,11 +36,15 @@ class Program {
 
   static void mainMenu ();
 
-  static void optionsMenu (bool ingame);
+  static void optionsMenu ();
 
   static void gameSelectMenu ();
 
-  static int renderMenu (const ScreenMenu& sm);
+  static std::pair<int, gb::Button> renderMenu (const ScreenMenu& sm, int selection = 0);
+
+  static inline std::string selector (int value, int max) {
+    return std::string("<").append(value, '=').append(max - value, ' ') + ">";
+  }
 
 public:
 

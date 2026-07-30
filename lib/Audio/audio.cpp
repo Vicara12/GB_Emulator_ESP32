@@ -13,26 +13,39 @@ void Audio::launch_ (void*) {
 
   while (true) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY); // Wait until new data sample has been fed
-    Audio::playBuffer();
+    { // Lock scope
+      std::lock_guard<std::mutex> lock(Audio::audio_mutex);
+      std::swap(audio_buffers[0], audio_buffers[1]);
+    }
+    Audio::playBuffer((*audio_buffers[0]).data(), (*audio_buffers[0]).size());
   }
 }
 
 
-void Audio::playBuffer () {
-  { // Lock scope
-    std::lock_guard<std::mutex> lock(Audio::audio_mutex);
-    std::swap(audio_buffers[0], audio_buffers[1]);
-  }
-
+void Audio::playBuffer (const void *data, size_t n_samples) {
   size_t bytes_written;
 
   i2s_write(
     I2S_NUM,
-    (*audio_buffers[0]).data(),   // Pointer to the audio data
-    2*(*audio_buffers[0]).size(), // How many bytes to send
+    data,        // Pointer to the audio data
+    2*n_samples, // How many bytes to send
     &bytes_written,         // Returns how many bytes were actually written
     portMAX_DELAY
   );
+}
+
+
+void Audio::beep () {
+  // Adjust samples so that they have the correct volume
+  auto vol_adjusted_beep_buffer = [] () {
+    auto new_buffer = BEEP_BUFFER;
+    for (auto &sample : new_buffer) {
+      sample *= Audio::volume;
+    }
+    return new_buffer;
+  }();
+  
+  Audio::playBuffer(vol_adjusted_beep_buffer.data(), vol_adjusted_beep_buffer.size());
 }
 
 
@@ -102,7 +115,7 @@ void Audio::kill () {
 
 
 void Audio::setVolume (int volume) {
-  volume = std::clamp(volume, 0, 7);
+  volume = std::clamp(volume, 0, MAX_VOL);
   static constexpr int16_t conversion = std::numeric_limits<int16_t>::max()/std::numeric_limits<int8_t>::max();
   Audio::volume = (volume*conversion)/7;
 }
