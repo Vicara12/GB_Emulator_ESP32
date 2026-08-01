@@ -65,7 +65,7 @@ bool Program::emuPausedMenu (std::shared_ptr<ESP32Interface> interface) {
       "Volume",
       "Brightness",
       "Save",
-      "Save & exit",
+      "Save & Exit",
       "Exit"
     }
   };
@@ -81,7 +81,7 @@ bool Program::emuPausedMenu (std::shared_ptr<ESP32Interface> interface) {
     std::tie(selection, button) = renderMenu(sm, selection);
     switch(selection) {
       case 0:
-        if (button == gb::Button::Select) break;
+        if (button != gb::Button::Start) break;
         quit = true;
         break;
       case 1:
@@ -91,19 +91,19 @@ bool Program::emuPausedMenu (std::shared_ptr<ESP32Interface> interface) {
         updateBrightnessKnob(button, sm.options[2]);
         break;
       case 3:
-        if (button == gb::Button::Select) break;
+        if (button != gb::Button::Start) break;
         Audio::beep();
-        // TODO save game
+        saveGame(interface);
         break;
       case 4:
-        if (button == gb::Button::Select) break;
+        if (button != gb::Button::Start) break;
         Audio::beep();
-        // TODO save game
-        quit = true;
-        exit_emu = true;
+        // Only quit if game could be saved
+        quit = saveGame(interface);;
+        exit_emu = quit;
         break;
       case 5:
-        if (button == gb::Button::Select) break;
+        if (button != gb::Button::Start) break;
         Audio::beep();
         quit = true;
         exit_emu = true;
@@ -118,6 +118,54 @@ bool Program::emuPausedMenu (std::shared_ptr<ESP32Interface> interface) {
   display.clearScreen();
 
   return exit_emu;
+}
+
+
+bool Program::saveGame (std::shared_ptr<ESP32Interface> interface) {
+  ScreenMenu sm = ScreenMenu{
+    .title = "Save Game",
+    .options = {
+      "Overwrite",
+      "New Saved Game",
+      "Back"
+    }
+  };
+
+  interface->forceRAMCopy();
+  std::unique_ptr<gb::GameRom> ram = nullptr;
+  while (not ram) {
+    ram = interface->getRAM();
+    delay(100);
+  }
+  display.clearScreen();
+  if (ram->size() == 0) {
+    ScreenMenu error_sm = ScreenMenu{.title = "ERROR", .options = {"Back"}};
+    std::string msg = "Game can't be saved";
+    int selection = 0;
+    gb::Button button = gb::Button::A;
+    while (button != gb::Button::Start) {
+      std::tie(selection, button) = renderErrorMenu(error_sm, msg);
+    }
+    Audio::beep();
+    display.clearScreen();
+    return false;
+  }
+
+  auto [selection, button] = renderMenu(sm);
+  switch(selection) {
+    case 0:
+      if (button != gb::Button::Start) break;
+      // TODO overwrite
+      break;
+    case 1:
+      // TODO overwrite
+      break;
+    case 2:
+      updateBrightnessKnob(button, sm.options[2]);
+      break;
+  }
+
+  return true;
 }
 
 
@@ -284,6 +332,7 @@ void Program::gameSelectMenu () {
   }
 
   if (not sd_init_ok) {
+    sm.title = "ERROR";
     std::string msg = "Unable to open SD";
     int selection = 0;
     gb::Button button = gb::Button::A;

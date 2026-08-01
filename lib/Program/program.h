@@ -57,6 +57,8 @@ class Program {
 
   static bool handleEmuButton (std::shared_ptr<ESP32Interface> interface);
 
+  static bool saveGame (std::shared_ptr<ESP32Interface> interface);
+
   static void updateVolumeKnob (gb::Button button, std::string &knob_str);
 
   static void updateBrightnessKnob (gb::Button button, std::string &knob_str);
