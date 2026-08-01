@@ -19,10 +19,8 @@ void Program::launch_ (void*) {
   // Hardware setup
   loadCfg();
   display.init();
-  sd_init_ok = sd.init(
-    [&]{ display.releaseBus(); },
-    [&]{ display.acquireBus(); }
-  );
+  sd.setBusHandover([&]{ display.releaseBus(); }, [&]{ display.acquireBus(); });
+  sd_init_ok = sd.init();
   Audio::launch(Program::PROGRAM_CORE);
   Buttons::init();
 
@@ -59,6 +57,7 @@ bool Program::runEmulator (
   emulator->launch(Program::config.emu_cfg);
 
   bool exit_emu = false;
+  display.clearScreen();
 
   while (not exit_emu) {
     if (interface->newScreenAvailable()) {
@@ -185,6 +184,10 @@ void Program::gameSelectMenu () {
   ScreenMenu sm = ScreenMenu{.title = "Select Game", .options = {"Back"}};
 
   if (not sd_init_ok) {
+    sd_init_ok = sd.init();
+  }
+
+  if (not sd_init_ok) {
     std::string msg = "Unable to open SD";
     int selection = 0;
     gb::Button button = gb::Button::A;
@@ -194,8 +197,9 @@ void Program::gameSelectMenu () {
     Audio::beep();
   }
   else {
-    for (auto game : sd.listGames()) {
-      sm.options.push_back(std::move(game));
+    auto game_names = sd.listGames();
+    for (auto game : game_names) {
+      sm.options.push_back(game);
     }
     sm = Display::beautifyMenu(std::move(sm));
     int selection = 0;
@@ -208,7 +212,8 @@ void Program::gameSelectMenu () {
     if (selection == 0) {
       return;
     }
-    if (not runEmulator(sm.options[selection])) {
+    selection--;
+    if (not runEmulator(game_names[selection])) {
       display.clearScreen();
       ScreenMenu error_sm = ScreenMenu{.title = "Error", .options = {"Back"}};
       std::string msg = "Unable to load game";

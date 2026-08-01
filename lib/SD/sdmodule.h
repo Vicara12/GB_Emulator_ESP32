@@ -22,8 +22,8 @@ class SDModule {
   static constexpr const char *kSaveExtension  = ".save";
 
   SPIClass _sdSpi{HSPI};
-  std::function<void()> _releaseDisplayBus;
-  std::function<void()> _acquireDisplayBus;
+  std::function<void()> _releaseBus;
+  std::function<void()> _acquireBus;
   int _busDepth = 0;
 
 
@@ -31,7 +31,7 @@ class SDModule {
     SDModule *self;
     explicit BusGuard (SDModule *self) : self(self) {
       if (self->_busDepth++ == 0) {
-        if (self->_releaseDisplayBus) self->_releaseDisplayBus();
+        if (self->_releaseBus) self->_releaseBus();
         self->_sdSpi.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
         SD.begin(SD_CS, self->_sdSpi, 20'000'000);
       }
@@ -40,7 +40,7 @@ class SDModule {
       if (--self->_busDepth == 0) {
         SD.end();
         self->_sdSpi.end();
-        if (self->_acquireDisplayBus) self->_acquireDisplayBus();
+        if (self->_acquireBus) self->_acquireBus();
       }
     }
   };
@@ -52,20 +52,29 @@ class SDModule {
 
   std::string savedGamePath (const std::string &game, const std::string &save) const;
 
+  gb::ScreenPixels loadScreen (File &file);
+
 public:
 
-  struct SavedGame {
+  struct SavedGameInfo {
+    std::string name;
     gb::ScreenPixels screen;
+  };
+
+  struct SavedGame {
+    SavedGameInfo info;
     std::vector<uint8_t> ram_data;
   };
 
-  bool init (std::function<void()> releaseDisplayBus, std::function<void()> acquireDisplayBus);
+  bool init ();
+
+  void setBusHandover (std::function<void()> releaseBus, std::function<void()> acquireBus);
 
   std::vector<std::string> listGames ();
 
   std::unique_ptr<gb::GameRom> loadGame (const std::string &game);
 
-  std::vector<std::string> listSavedGames (const std::string &game);
+  std::vector<SavedGameInfo> listSavedGames (const std::string &game);
 
   SavedGame loadSavedGame (const std::string &game, const std::string &save);
 

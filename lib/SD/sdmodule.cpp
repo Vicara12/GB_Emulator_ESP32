@@ -47,15 +47,16 @@ bool isAllDigits (const std::string &s) {
 } // namespace
 
 
-bool SDModule::init (
-  std::function<void()> releaseDisplayBus,
-  std::function<void()> acquireDisplayBus
-) {
-  _releaseDisplayBus = std::move(releaseDisplayBus);
-  _acquireDisplayBus = std::move(acquireDisplayBus);
-
+bool SDModule::init () {
   BusGuard guard(this);
   return SD.cardType() != CARD_NONE;
+}
+
+
+void SDModule::setBusHandover (std::function<void()> releaseBus,
+                                std::function<void()> acquireBus) {
+  _releaseBus = std::move(releaseBus);
+  _acquireBus = std::move(acquireBus);
 }
 
 
@@ -105,9 +106,9 @@ std::unique_ptr<gb::GameRom> SDModule::loadGame (const std::string &game) {
 }
 
 
-std::vector<std::string> SDModule::listSavedGames (const std::string &game) {
+std::vector<SDModule::SavedGameInfo> SDModule::listSavedGames (const std::string &game) {
   BusGuard guard(this);
-  std::vector<std::string> saves;
+  std::vector<SavedGameInfo> saves;
 
   std::string dirPath = savedGameDirForGame(game);
   if (not SD.exists(dirPath.c_str())) {
@@ -123,7 +124,13 @@ std::vector<std::string> SDModule::listSavedGames (const std::string &game) {
     if (not entry.isDirectory()) {
       std::string name = getBasename(stripLeadingSlash(entry.name()));
       if (endsWith(name, kSaveExtension)) {
-        saves.push_back(stripSuffix(name, kSaveExtension));
+        File file = SD.open(entry.name(), FILE_READ);
+        if (file) {
+          saves.push_back(SavedGameInfo{
+            .name = stripSuffix(name, kSaveExtension),
+            .screen = loadScreen(file)
+          });
+        }
       }
     }
     entry.close();
@@ -131,6 +138,15 @@ std::vector<std::string> SDModule::listSavedGames (const std::string &game) {
 
   dir.close();
   return saves;
+}
+
+
+gb::ScreenPixels SDModule::loadScreen (File &file) {
+  gb::ScreenPixels screen;
+  for (auto &row : screen) {
+    file.read(row.data(), row.size());
+  }
+  return screen;
 }
 
 
@@ -144,7 +160,7 @@ SDModule::SavedGame SDModule::loadSavedGame (const std::string &game, const std:
     return result;
   }
 
-  for (auto &row : result.screen) {
+  for (auto &row : result.info.screen) {
     file.read(row.data(), row.size());
   }
 
@@ -155,6 +171,8 @@ SDModule::SavedGame SDModule::loadSavedGame (const std::string &game, const std:
   if (ramSize > 0) {
     file.read(result.ram_data.data(), ramSize);
   }
+
+  result.info.name = save;
 
   file.close();
   return result;
@@ -181,8 +199,8 @@ std::string SDModule::newSavedGame (const std::string &game, SavedGame &&data) {
   // current highest one so the new save can be numbered highest + 1.
   int highest = 0;
   for (const auto &save : listSavedGames(game)) {
-    if (isAllDigits(save)) {
-      highest = std::max(highest, std::atoi(save.c_str()));
+    if (isAllDigits(save.name)) {
+      highest = std::max(highest, std::atoi(save.name.c_str()));
     }
   }
 
@@ -194,7 +212,7 @@ std::string SDModule::newSavedGame (const std::string &game, SavedGame &&data) {
     return "";
   }
 
-  for (const auto &row : data.screen) {
+  for (const auto &row : data.info.screen) {
     file.write(row.data(), row.size());
   }
 
