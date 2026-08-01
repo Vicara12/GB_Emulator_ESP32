@@ -3,6 +3,9 @@
 #include <Arduino.h>
 
 
+int Buttons::prev_emu_button_state = LOW;
+
+
 void Buttons::init () {
   pinMode(EMU_BUTTON_PIN, INPUT_PULLUP);
 
@@ -22,5 +25,8 @@ gb::Byte Buttons::readPadButtons () {
 
 
 bool Buttons::emuButtonPressed () {
-  return digitalRead(EMU_BUTTON_PIN) == LOW;
+  bool new_state = digitalRead(EMU_BUTTON_PIN);
+  bool pressed = (new_state == LOW and prev_emu_button_state == HIGH);
+  prev_emu_button_state = new_state;
+  return pressed;
 }

@@ -2,7 +2,6 @@
 
 #include "SPIFFS.h"
 #include "audio.h"
-#include "emulauncher.h"
 #include "buttons.h"
 
 
@@ -11,6 +10,7 @@ TaskHandle_t Program::task_handler;
 Program::Configuration Program::config;
 Preferences Program::persistent;
 SDModule Program::sd;
+EmulatorLauncher Program::emulator;
 bool Program::sd_init_ok;
 
 
@@ -18,11 +18,13 @@ bool Program::sd_init_ok;
 void Program::launch_ (void*) {
   // Hardware setup
   loadCfg();
+  emulator.launch();
+  Audio::launch(Program::PROGRAM_CORE);
   display.init();
   sd.setBusHandover([&]{ display.releaseBus(); }, [&]{ display.acquireBus(); });
   sd_init_ok = sd.init();
-  Audio::launch(Program::PROGRAM_CORE);
   Buttons::init();
+  Audio::setVolume(config.volume);
 
   Program::mainMenu();
 }
@@ -42,32 +44,112 @@ void Program::launch () {
 }
 
 
+bool Program::handleEmuButton (std::shared_ptr<ESP32Interface> interface) {
+  bool exit_emu = false;
+
+  if (Buttons::emuButtonPressed()) {
+    interface->pauseEmulation();
+    exit_emu = emuPausedMenu(interface);
+    interface->resumeEmulation();
+  }
+
+  return exit_emu;
+}
+
+
+bool Program::emuPausedMenu (std::shared_ptr<ESP32Interface> interface) {
+  ScreenMenu sm = ScreenMenu{
+    .title = "Game Paused",
+    .options = {
+      "Resume",
+      "Volume",
+      "Brightness",
+      "Save",
+      "Save & exit",
+      "Exit"
+    }
+  };
+  updateVolumeKnob(gb::Button::A, sm.options[1]);
+  updateBrightnessKnob(gb::Button::A, sm.options[2]);
+  bool quit = false;
+  bool exit_emu = false;
+  int selection = 0;
+  gb::Button button;
+
+  display.clearScreen();
+  while (not quit) {
+    std::tie(selection, button) = renderMenu(sm, selection);
+    switch(selection) {
+      case 0:
+        if (button == gb::Button::Select) break;
+        quit = true;
+        break;
+      case 1:
+        updateVolumeKnob(button, sm.options[1]);
+        break;
+      case 2:
+        updateBrightnessKnob(button, sm.options[2]);
+        break;
+      case 3:
+        if (button == gb::Button::Select) break;
+        Audio::beep();
+        // TODO save game
+        break;
+      case 4:
+        if (button == gb::Button::Select) break;
+        Audio::beep();
+        // TODO save game
+        quit = true;
+        exit_emu = true;
+        break;
+      case 5:
+        if (button == gb::Button::Select) break;
+        Audio::beep();
+        quit = true;
+        exit_emu = true;
+        break;
+    }
+  }
+
+  if (exit_emu) {
+    interface->requestEmulationEnd();
+  }
+  storeCfg();
+  display.clearScreen();
+
+  return exit_emu;
+}
+
+
 bool Program::runEmulator (
   const std::string &game_name
 ) {
   // Emulator setup
   auto interface = std::make_shared<ESP32Interface>();
-  auto emulator = std::make_shared<EmulatorLauncher>();
   auto game_rom = sd.loadGame(game_name);
   if (game_rom == nullptr or game_rom->empty()) {
     return false;
   }
-  // TODO load saved game
-  emulator->init(interface, std::move(game_rom));
-  emulator->launch(Program::config.emu_cfg);
 
   bool exit_emu = false;
   display.clearScreen();
 
+  // TODO load saved game
+  emulator.emulate(interface, Program::config.emu_cfg, std::move(game_rom));
   while (not exit_emu) {
     if (interface->newScreenAvailable()) {
       display.printScreen(interface->getLatestScreen());
     }
     interface->setButtons(Buttons::readPadButtons());
+    exit_emu = handleEmuButton(interface);
     delay(1000/60);
     taskYIELD(); // Notify watchdog
   }
 
+  while (not interface->emulationEnded()) {
+    delay(100);
+  }
+  
   return true;
 }
 
@@ -100,9 +182,6 @@ void Program::mainMenu () {
     }
   });
 
-  Serial.println(sd_init_ok ? "SD ok!" : "SD fail :(");
-  for (auto &game : sd.listGames()) Serial.println(game.c_str());
-
   while (true) {
     auto [selection, button] = renderMenu(main_menu);
     if (button != gb::Button::Start) {
@@ -134,9 +213,10 @@ void Program::optionsMenu () {
       "Back"
     }
   };
-  options_menu.options[0] = selector(config.volume, Audio::MAX_VOL)         + " " + options_menu.options[0];
-  options_menu.options[1] = selector(config.brightness, Display::MAX_BRIGHTNESS) + " " + options_menu.options[1];
-  options_menu.options[2] = (config.emu_cfg.skip_boot_room ? "[x] " : "[ ] ") + options_menu.options[2];
+  // Format knob strings
+  updateVolumeKnob(gb::Button::A, options_menu.options[0]);
+  updateBrightnessKnob(gb::Button::A, options_menu.options[1]);
+  options_menu.options[2] = config.emu_cfg.skip_boot_room ? "[x] Skip logo" : "[ ] Skip logo";
   bool back = false;
 
   display.clearScreen();
@@ -147,20 +227,10 @@ void Program::optionsMenu () {
     std::tie(selection, button) = renderMenu(options_menu, selection);
     switch(selection) {
       case 0:
-        if      (button == gb::Button::Left ) config.volume = std::max(0, config.volume-1);
-        else if (button == gb::Button::Right) config.volume = std::min(Audio::MAX_VOL, config.volume+1);
-        else break;
-        Audio::setVolume(config.volume);
-        Audio::beep();
-        options_menu.options[0] = selector(config.volume, Audio::MAX_VOL) + " Volume";
+        updateVolumeKnob(button, options_menu.options[0]);
         break;
       case 1:
-        if      (button == gb::Button::Left ) config.brightness = std::max(0, config.brightness-1);
-        else if (button == gb::Button::Right) config.brightness = std::min(Display::MAX_BRIGHTNESS, config.brightness+1);
-        else break;
-        Audio::beep();
-        options_menu.options[1] = selector(config.brightness, Display::MAX_BRIGHTNESS) + " Brightness";
-        // TODO change brightness
+        updateBrightnessKnob(button, options_menu.options[1]);
         break;
       case 2:
         if (button == gb::Button::Start) config.emu_cfg.skip_boot_room = not config.emu_cfg.skip_boot_room;
@@ -176,6 +246,32 @@ void Program::optionsMenu () {
   }
 
   storeCfg();
+}
+
+
+void Program::updateVolumeKnob (gb::Button button, std::string &knob_str) {
+  bool valid_command = true;
+  if      (button == gb::Button::Left ) config.volume = std::max(0, config.volume-1);
+  else if (button == gb::Button::Right) config.volume = std::min(Audio::MAX_VOL, config.volume+1);
+  else valid_command = false;
+  Audio::setVolume(config.volume);
+  knob_str = selector(config.volume, Audio::MAX_VOL) + " Volume";
+  if (valid_command) {
+    Audio::beep();
+  }
+}
+
+
+void Program::updateBrightnessKnob (gb::Button button, std::string &knob_str) {
+  bool valid_command = true;
+  if      (button == gb::Button::Left ) config.brightness = std::max(0, config.brightness-1);
+  else if (button == gb::Button::Right) config.brightness = std::min(Display::MAX_BRIGHTNESS, config.brightness+1);
+  else valid_command = false;
+  knob_str = selector(config.brightness, Display::MAX_BRIGHTNESS) + " Brightness";
+  // TODO change brightness
+  if (valid_command) {
+    Audio::beep();
+  }
 }
 
 

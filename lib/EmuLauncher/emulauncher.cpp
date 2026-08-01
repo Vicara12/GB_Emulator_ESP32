@@ -4,23 +4,28 @@
 
 std::shared_ptr<ESP32Interface> EmulatorLauncher::interface;
 std::unique_ptr<gb::GameRom> EmulatorLauncher::cartridge_data;
+std::unique_ptr<gb::GameRom> EmulatorLauncher::save_game;
 gb::EmulatorConfig EmulatorLauncher::emu_cfg;
 TaskHandle_t EmulatorLauncher::task_handler;
+bool EmulatorLauncher::start_emu = false;
 
 
 
-void EmulatorLauncher::init (
+void EmulatorLauncher::emulate (
   std::shared_ptr<ESP32Interface> interface,
-  std::unique_ptr<gb::GameRom> cartridge_data
+  gb::EmulatorConfig cfg,
+  std::unique_ptr<gb::GameRom> cartridge_data,
+  std::unique_ptr<gb::GameRom> save_game
 ) {
   EmulatorLauncher::interface = interface;
+  emu_cfg = cfg;
   EmulatorLauncher::cartridge_data = std::move(cartridge_data);
+  EmulatorLauncher::save_game = std::move(save_game);
+  start_emu = true;
 }
 
 
-void EmulatorLauncher::launch (gb::EmulatorConfig cfg) {
-  emu_cfg = cfg;
-
+void EmulatorLauncher::launch () {
   xTaskCreatePinnedToCore(
     EmulatorLauncher::launch_,
     "EmulatorTask",
@@ -36,10 +41,16 @@ void EmulatorLauncher::launch (gb::EmulatorConfig cfg) {
 void EmulatorLauncher::launch_ (void *) {
   esp_task_wdt_delete(NULL); // Disable watchdog
   esp_task_wdt_delete(xTaskGetIdleTaskHandleForCPU(0)); // Disable watchdog for idle task in core 0
-  gb::emulator<ESP32Interface, gb::BuildCfb::FastGraphics>(*interface, *cartridge_data, emu_cfg);
-
   while (true) {
-    vTaskDelay(1000);
+    vTaskDelay(100);
+    if (start_emu) {
+      start_emu = false;
+      gb::emulator<ESP32Interface, gb::BuildCfb::FastGraphics>(
+        *interface,
+        *cartridge_data,
+        std::move(emu_cfg)
+      );
+    }
   }
 }
 

@@ -18,6 +18,7 @@ class Buttons {
   }};
   static constexpr uint16_t EMU_BUTTON_PIN = 18;
 
+  static int prev_emu_button_state;
 
 public:
 

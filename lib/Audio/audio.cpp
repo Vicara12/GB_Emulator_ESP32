@@ -84,8 +84,6 @@ void Audio::init () {
   i2s_set_pin(Audio::I2S_NUM, &pin_config);
   
   i2s_zero_dma_buffer(Audio::I2S_NUM); // Set zero volume initially to prevent startup pops
-
-  Audio::setVolume(2); // TODO change from config
 }
 
 

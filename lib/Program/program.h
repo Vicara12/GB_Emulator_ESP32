@@ -6,6 +6,7 @@
 #include "display.h"
 #include "interfaceadapter.h"
 #include "sdmodule.h"
+#include "emulauncher.h"
 
 
 class Program {
@@ -23,6 +24,7 @@ class Program {
   static Configuration config;
   static Preferences persistent;
   static SDModule sd;
+  static EmulatorLauncher emulator;
   static bool sd_init_ok;
 
   static void launch_ (void*);
@@ -41,6 +43,8 @@ class Program {
 
   static void gameSelectMenu ();
 
+  static bool emuPausedMenu (std::shared_ptr<ESP32Interface> interface);
+
   static std::pair<int, gb::Button> renderMenu (const ScreenMenu& sm, int selection = 0);
 
   static std::pair<int, gb::Button> renderErrorMenu (const ScreenMenu& sm, const std::string &msg);
@@ -50,6 +54,12 @@ class Program {
   }
 
   static std::pair<bool, gb::Button> handleMenuNavigation(int n_opts, int &selection);
+
+  static bool handleEmuButton (std::shared_ptr<ESP32Interface> interface);
+
+  static void updateVolumeKnob (gb::Button button, std::string &knob_str);
+
+  static void updateBrightnessKnob (gb::Button button, std::string &knob_str);
 
 public:
 

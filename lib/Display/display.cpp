@@ -9,7 +9,7 @@ Display::Display ()
   auto bus_cfg = _bus_instance.config();
   bus_cfg.spi_host = SPI2_HOST;
   bus_cfg.spi_mode = 0;
-  bus_cfg.freq_write = 40'000'000; // Back up to 40MHz for emulator speed!
+  bus_cfg.freq_write = 40'000'000;
   bus_cfg.pin_sclk = 12;
   bus_cfg.pin_mosi = 11;
   bus_cfg.pin_miso = 13;

@@ -1,3 +1,11 @@
+# ESP-32 Based GameBoy (DMG) Emulator
+
+# TODOs:
+  * In-game menu
+  * Save game system
+  * Battery indicator
+  * Power system
+  * Cover
 
 ## Hardware components and connections
 
