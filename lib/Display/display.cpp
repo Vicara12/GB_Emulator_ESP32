@@ -34,6 +34,19 @@ Display::Display ()
 }
 
 
+void Display::releaseBus () {
+  // Make sure the panel is deselected so it can't react to SD traffic
+  digitalWrite(10, HIGH); // CS pin
+  _bus_instance.release();
+}
+
+
+void Display::acquireBus () {
+  _bus_instance.init();
+  _panel_instance.init(false);
+}
+
+
 void Display::init () {
   lgfx::LGFX_Device::init();
   setRotation(1);

@@ -18,8 +18,11 @@ bool Program::sd_init_ok;
 void Program::launch_ (void*) {
   // Hardware setup
   loadCfg();
-  sd_init_ok = sd.init();
   display.init();
+  sd_init_ok = sd.init(
+    [&]{ display.releaseBus(); },
+    [&]{ display.acquireBus(); }
+  );
   Audio::launch(Program::PROGRAM_CORE);
   Buttons::init();
 

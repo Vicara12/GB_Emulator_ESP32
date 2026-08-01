@@ -47,21 +47,20 @@ bool isAllDigits (const std::string &s) {
 } // namespace
 
 
-bool SDModule::init () {
-  pinMode(SD_CS, OUTPUT);
-  digitalWrite(SD_CS, HIGH);
+bool SDModule::init (
+  std::function<void()> releaseDisplayBus,
+  std::function<void()> acquireDisplayBus
+) {
+  _releaseDisplayBus = std::move(releaseDisplayBus);
+  _acquireDisplayBus = std::move(acquireDisplayBus);
 
-  static SPIClass sdSpi(HSPI);
-  sdSpi.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
-
-  if (not SD.begin(SD_CS, sdSpi)) {
-      return false;
-  }
-
+  BusGuard guard(this);
   return SD.cardType() != CARD_NONE;
 }
 
+
 std::vector<std::string> SDModule::listGames () {
+  BusGuard guard(this);
   std::vector<std::string> games;
 
   File root = SD.open("/");
@@ -85,6 +84,7 @@ std::vector<std::string> SDModule::listGames () {
 
 
 std::unique_ptr<gb::GameRom> SDModule::loadGame (const std::string &game) {
+  BusGuard guard(this);
   std::unique_ptr<gb::GameRom> data;
 
   std::string path = "/" + game + kGameExtension;
@@ -106,6 +106,7 @@ std::unique_ptr<gb::GameRom> SDModule::loadGame (const std::string &game) {
 
 
 std::vector<std::string> SDModule::listSavedGames (const std::string &game) {
+  BusGuard guard(this);
   std::vector<std::string> saves;
 
   std::string dirPath = savedGameDirForGame(game);
@@ -134,6 +135,7 @@ std::vector<std::string> SDModule::listSavedGames (const std::string &game) {
 
 
 SDModule::SavedGame SDModule::loadSavedGame (const std::string &game, const std::string &save) {
+  BusGuard guard(this);
   SavedGame result{};
 
   std::string path = savedGamePath(game, save);
@@ -160,6 +162,7 @@ SDModule::SavedGame SDModule::loadSavedGame (const std::string &game, const std:
 
 
 void SDModule::removeSavedGame (const std::string &game, const std::string &save) {
+  BusGuard guard(this);
   std::string path = savedGamePath(game, save);
   if (SD.exists(path.c_str())) {
     SD.remove(path.c_str());
@@ -168,6 +171,7 @@ void SDModule::removeSavedGame (const std::string &game, const std::string &save
 
 
 std::string SDModule::newSavedGame (const std::string &game, SavedGame &&data) {
+  BusGuard guard(this);
   std::string dirPath = savedGameDirForGame(game);
   if (not ensureDirectoryExists(dirPath)) {
     return "";

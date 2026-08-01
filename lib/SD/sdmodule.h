@@ -4,12 +4,15 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <functional>
+#include <SPI.h>
+#include <SD.h>
 #include <emulator/emulator.h>
 
 
 class SDModule {
 
-  static constexpr uint8_t SD_CS = 8;
+  static constexpr uint8_t SD_CS   = 8;
   static constexpr uint8_t SD_SCLK = 12;
   static constexpr uint8_t SD_MISO = 13;
   static constexpr uint8_t SD_MOSI = 11;
@@ -17,6 +20,31 @@ class SDModule {
   static constexpr const char *kSavedGamesDir = "/saved_games";
   static constexpr const char *kGameExtension  = ".gb";
   static constexpr const char *kSaveExtension  = ".save";
+
+  SPIClass _sdSpi{HSPI};
+  std::function<void()> _releaseDisplayBus;
+  std::function<void()> _acquireDisplayBus;
+  int _busDepth = 0;
+
+
+  struct BusGuard {
+    SDModule *self;
+    explicit BusGuard (SDModule *self) : self(self) {
+      if (self->_busDepth++ == 0) {
+        if (self->_releaseDisplayBus) self->_releaseDisplayBus();
+        self->_sdSpi.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
+        SD.begin(SD_CS, self->_sdSpi, 20'000'000);
+      }
+    }
+    ~BusGuard () {
+      if (--self->_busDepth == 0) {
+        SD.end();
+        self->_sdSpi.end();
+        if (self->_acquireDisplayBus) self->_acquireDisplayBus();
+      }
+    }
+  };
+
 
   bool ensureDirectoryExists (const std::string &path);
 
@@ -27,11 +55,11 @@ class SDModule {
 public:
 
   struct SavedGame {
-    std::array<std::array<uint8_t, gb::SCREEN_PX_W>, gb::SCREEN_PX_H> screen;
+    gb::ScreenPixels screen;
     std::vector<uint8_t> ram_data;
   };
 
-  bool init ();
+  bool init (std::function<void()> releaseDisplayBus, std::function<void()> acquireDisplayBus);
 
   std::vector<std::string> listGames ();
 

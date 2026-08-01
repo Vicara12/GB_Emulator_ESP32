@@ -37,6 +37,10 @@ public:
 
   void init ();
 
+  // SD and screen share SPI bus, so these methods are used by the SD module
+  void releaseBus ();
+  void acquireBus ();
+
   void printMenu (const ScreenMenu &menu, int first, int selection);
 
   void printError (const ScreenMenu &menu, const std::string &msg, int selection);
