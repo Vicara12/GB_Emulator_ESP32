@@ -5,6 +5,7 @@
 #include <emulator/emulator.h>
 #include "display.h"
 #include "interfaceadapter.h"
+#include "sdmodule.h"
 
 
 class Program {
@@ -21,17 +22,18 @@ class Program {
   static TaskHandle_t task_handler;
   static Configuration config;
   static Preferences persistent;
-  static std::string rom_path; // TODO remove
+  static SDModule sd;
+  static bool sd_init_ok;
 
   static void launch_ (void*);
-
-  static std::unique_ptr<gb::GameRom> readGameRom (const std::string &game_path);
 
   static void loadCfg ();
 
   static void storeCfg ();
 
-  static void runEmulator ();
+  static bool runEmulator (
+    const std::string &game_name
+  );
 
   static void mainMenu ();
 
@@ -41,11 +43,15 @@ class Program {
 
   static std::pair<int, gb::Button> renderMenu (const ScreenMenu& sm, int selection = 0);
 
+  static std::pair<int, gb::Button> renderErrorMenu (const ScreenMenu& sm, const std::string &msg);
+
   static inline std::string selector (int value, int max) {
     return std::string("<").append(value, '=').append(max - value, ' ') + ">";
   }
 
+  static std::pair<bool, gb::Button> handleMenuNavigation(int n_opts, int &selection);
+
 public:
 
-  static void launch (const std::string rom_path);
+  static void launch ();
 };

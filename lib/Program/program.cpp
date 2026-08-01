@@ -10,13 +10,15 @@ Display Program::display;
 TaskHandle_t Program::task_handler;
 Program::Configuration Program::config;
 Preferences Program::persistent;
-std::string Program::rom_path;
+SDModule Program::sd;
+bool Program::sd_init_ok;
 
 
 
 void Program::launch_ (void*) {
   // Hardware setup
   loadCfg();
+  sd_init_ok = sd.init();
   display.init();
   Audio::launch(Program::PROGRAM_CORE);
   Buttons::init();
@@ -25,8 +27,7 @@ void Program::launch_ (void*) {
 }
 
 
-void Program::launch (const std::string rom_path) {
-  Program::rom_path = rom_path; // TODO remove
+void Program::launch () {
   persistent.begin("config", false);
   xTaskCreatePinnedToCore(
     Program::launch_,
@@ -40,11 +41,17 @@ void Program::launch (const std::string rom_path) {
 }
 
 
-void Program::runEmulator () {
+bool Program::runEmulator (
+  const std::string &game_name
+) {
   // Emulator setup
   auto interface = std::make_shared<ESP32Interface>();
   auto emulator = std::make_shared<EmulatorLauncher>();
-  auto game_rom = Program::readGameRom(rom_path);
+  auto game_rom = sd.loadGame(game_name);
+  if (game_rom == nullptr or game_rom->empty()) {
+    return false;
+  }
+  // TODO load saved game
   emulator->init(interface, std::move(game_rom));
   emulator->launch(Program::config.emu_cfg);
 
@@ -54,10 +61,12 @@ void Program::runEmulator () {
     if (interface->newScreenAvailable()) {
       display.printScreen(interface->getLatestScreen());
     }
-    interface->setButtons(Buttons::readPadButtons()); // TODO increase frequency
+    interface->setButtons(Buttons::readPadButtons());
     delay(1000/60);
     taskYIELD(); // Notify watchdog
   }
+
+  return true;
 }
 
 
@@ -89,6 +98,9 @@ void Program::mainMenu () {
     }
   });
 
+  Serial.println(sd_init_ok ? "SD ok!" : "SD fail :(");
+  for (auto &game : sd.listGames()) Serial.println(game.c_str());
+
   while (true) {
     auto [selection, button] = renderMenu(main_menu);
     if (button != gb::Button::Start) {
@@ -97,7 +109,7 @@ void Program::mainMenu () {
     switch(selection) {
       case 0:
         Audio::beep();
-        runEmulator();
+        gameSelectMenu();
         display.clearScreen();
         break;
       case 1:
@@ -120,7 +132,6 @@ void Program::optionsMenu () {
       "Back"
     }
   };
-  Serial.println("pre");
   options_menu.options[0] = selector(config.volume, Audio::MAX_VOL)         + " " + options_menu.options[0];
   options_menu.options[1] = selector(config.brightness, Display::MAX_BRIGHTNESS) + " " + options_menu.options[1];
   options_menu.options[2] = (config.emu_cfg.skip_boot_room ? "[x] " : "[ ] ") + options_menu.options[2];
@@ -167,7 +178,45 @@ void Program::optionsMenu () {
 
 
 void Program::gameSelectMenu () {
+  display.clearScreen();
+  ScreenMenu sm = ScreenMenu{.title = "Select Game", .options = {"Back"}};
 
+  if (not sd_init_ok) {
+    std::string msg = "Unable to open SD";
+    int selection = 0;
+    gb::Button button = gb::Button::A;
+    while (button != gb::Button::Start) {
+      std::tie(selection, button) = renderErrorMenu(sm, msg);
+    }
+    Audio::beep();
+  }
+  else {
+    for (auto game : sd.listGames()) {
+      sm.options.push_back(std::move(game));
+    }
+    sm = Display::beautifyMenu(std::move(sm));
+    int selection = 0;
+    gb::Button button = gb::Button::A;
+    while (button != gb::Button::Start) {
+      std::tie(selection, button) = renderMenu(sm);
+    }
+    Audio::beep();
+    // Option 0 is back
+    if (selection == 0) {
+      return;
+    }
+    if (not runEmulator(sm.options[selection])) {
+      display.clearScreen();
+      ScreenMenu error_sm = ScreenMenu{.title = "Error", .options = {"Back"}};
+      std::string msg = "Unable to load game";
+      int selection = 0;
+      gb::Button button = gb::Button::A;
+      while (button != gb::Button::Start) {
+        std::tie(selection, button) = renderErrorMenu(error_sm, msg);
+      }
+      Audio::beep();
+    }
+  }
 }
 
 
@@ -185,52 +234,61 @@ std::pair<int, gb::Button> Program::renderMenu (const ScreenMenu& sm, int select
       first = std::clamp(first, 0, n_opts - int(Display::maxMenuItems()));
     }
     display.printMenu(sm, first, selection);
-    bool action = false;
-    while (not action) {
-      delay(50);
-      gb::Byte buttons = Buttons::readPadButtons();
-      gb::Byte falling_edge = (buttons ^ prev_button_read) & prev_button_read;
-      prev_button_read = buttons;
-      if (falling_edge != 0) {
-        // Number of zeros to the right of the rightmost one
-        int pos_one = __builtin_ctz(static_cast<unsigned int>(falling_edge));
-        pressed = static_cast<gb::Button>(1 << pos_one);
-        switch (pressed) {
-          case gb::Button::Down:
-            action = true;
-            selection = (selection + 1) % n_opts;
-            break;
-          case gb::Button::Up:
-            action = true;
-            selection = (selection + sm.options.size() - 1) % n_opts;
-            break;
-          default:
-            action = true;
-            entered = true;
-            break;
-        }
-      }
-    }
+    std::tie(entered, pressed) = handleMenuNavigation(n_opts, selection);
   }
 
   return {selection, pressed};
 }
 
 
-std::unique_ptr<gb::GameRom> Program::readGameRom(const std::string &game_path) {
-  if (not SPIFFS.begin(true)) {
-    Serial.println("Some error occurred while mounting SPIFFS");
-    while (true) delay(1000);
-  }
-  
-  File file = SPIFFS.open(game_path.c_str(), FILE_READ);
-  if (not file || file.isDirectory())
-    throw std::runtime_error("Could not open file: " + game_path);
+std::pair<int, gb::Button> Program::renderErrorMenu (const ScreenMenu& sm, const std::string &msg) {
+  const int n_opts = sm.options.size();
+  bool entered = false;
+  int selection = 0;
+  gb::Button pressed;
 
-  size_t file_size = file.size();
-  auto game_rom = std::make_unique<gb::GameRom>();
-  game_rom->resize(file_size);
-  file.read(game_rom->data(), file_size);
-  file.close();
-  return game_rom;
+  while (not entered) {
+    display.printError(sm, msg, selection);
+    std::tie(entered, pressed) = handleMenuNavigation(n_opts, selection);
+  }
+
+  return {selection, pressed};
+}
+
+
+std::pair<bool, gb::Button> Program::handleMenuNavigation(int n_opts, int &selection) {
+  bool action = false;
+  bool entered = false;
+  gb::Button pressed;
+  gb::Byte prev_button_read = 0;
+  
+  while (not action) {
+    delay(10);
+    gb::Byte buttons = Buttons::readPadButtons();
+    gb::Byte falling_edge = (buttons ^ prev_button_read) & prev_button_read;
+    prev_button_read = buttons;
+    if (falling_edge != 0) {
+      // Number of zeros to the right of the rightmost one
+      int pos_one = __builtin_ctz(static_cast<unsigned int>(falling_edge));
+      pressed = static_cast<gb::Button>(1 << pos_one);
+      switch (pressed) {
+        case gb::Button::Down:
+          action = true;
+          selection = (selection + 1) % n_opts;
+          Audio::beep();
+          break;
+        case gb::Button::Up:
+          action = true;
+          selection = (selection + n_opts - 1) % n_opts;
+          Audio::beep();
+          break;
+        default:
+          action = true;
+          entered = true;
+          break;
+      }
+    }
+  }
+
+  return {entered, pressed};
 }

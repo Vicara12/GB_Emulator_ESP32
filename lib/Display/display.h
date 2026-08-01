@@ -39,6 +39,8 @@ public:
 
   void printMenu (const ScreenMenu &menu, int first, int selection);
 
+  void printError (const ScreenMenu &menu, const std::string &msg, int selection);
+
   void printScreen (const gb::ScreenPixels* pixels);
 
   void clearScreen ();

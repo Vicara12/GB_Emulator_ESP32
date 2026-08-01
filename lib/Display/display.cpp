@@ -69,6 +69,29 @@ void Display::printMenu (const ScreenMenu &menu, int first, int selection) {
   }
 }
 
+void Display::printError (const ScreenMenu &menu, const std::string &msg, int selection) {
+  setTextSize(3);
+  setTextColor(TFT_WHITE, TFT_BLACK);
+  setCursor(MARGIN, MARGIN);
+  println(menu.title.c_str());
+
+  setTextSize(2.5);
+
+  setTextDatum(textdatum_t::top_center);
+  drawString(msg.c_str(), width()/2, 3*MARGIN + 1.25*TEXT_SIZE);
+  setTextDatum(textdatum_t::top_left);
+
+  setTextSize(2);
+
+  for (int i = 0; i < std::min(size_t(3), menu.options.size()); i++) {
+    size_t v_pos = 3*MARGIN + TEXT_SIZE*(i + 3);
+    setCursor(2*MARGIN, v_pos);
+    println(i == selection ? ">" : " ");
+    setCursor(ITEM_MARGIN, v_pos);
+    println(menu.options[i].c_str());
+  }
+}
+
 
 ScreenMenu Display::beautifyMenu (ScreenMenu &&menu) {
   if (menu.options.size() == 0) {
