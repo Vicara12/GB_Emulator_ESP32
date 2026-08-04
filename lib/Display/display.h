@@ -29,6 +29,8 @@ class Display : public lgfx::LGFX_Device {
   lgfx::Bus_SPI       _bus_instance;
   std::unique_ptr<LGFX_Sprite> gb_screen;
 
+  void moveScreenToBuffer (const gb::ScreenPixels* pixels);
+
 public:
 
   static constexpr int MAX_BRIGHTNESS = 7;
@@ -46,6 +48,8 @@ public:
   void printError (const ScreenMenu &menu, const std::string &msg, int selection);
 
   void printScreen (const gb::ScreenPixels* pixels);
+
+  void printMiniature (const gb::ScreenPixels* pixels);
 
   void clearScreen ();
 

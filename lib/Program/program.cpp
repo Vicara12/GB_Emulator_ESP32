@@ -11,6 +11,7 @@ Program::Configuration Program::config;
 Preferences Program::persistent;
 SDModule Program::sd;
 EmulatorLauncher Program::emulator;
+std::string Program::current_game_name;
 bool Program::sd_init_ok;
 
 
@@ -93,13 +94,14 @@ bool Program::emuPausedMenu (std::shared_ptr<ESP32Interface> interface) {
       case 3:
         if (button != gb::Button::Start) break;
         Audio::beep();
-        saveGame(interface);
+        saveGameMenu(interface);
+        display.clearScreen();
         break;
       case 4:
         if (button != gb::Button::Start) break;
         Audio::beep();
         // Only quit if game could be saved
-        quit = saveGame(interface);;
+        quit = saveGameMenu(interface);
         exit_emu = quit;
         break;
       case 5:
@@ -121,16 +123,7 @@ bool Program::emuPausedMenu (std::shared_ptr<ESP32Interface> interface) {
 }
 
 
-bool Program::saveGame (std::shared_ptr<ESP32Interface> interface) {
-  ScreenMenu sm = ScreenMenu{
-    .title = "Save Game",
-    .options = {
-      "Overwrite",
-      "New Saved Game",
-      "Back"
-    }
-  };
-
+bool Program::saveGameMenu (std::shared_ptr<ESP32Interface> interface) {
   interface->forceRAMCopy();
   std::unique_ptr<gb::GameRom> ram = nullptr;
   while (not ram) {
@@ -151,39 +144,115 @@ bool Program::saveGame (std::shared_ptr<ESP32Interface> interface) {
     return false;
   }
 
-  auto [selection, button] = renderMenu(sm);
-  switch(selection) {
-    case 0:
-      if (button != gb::Button::Start) break;
-      // TODO overwrite
-      break;
-    case 1:
-      // TODO overwrite
-      break;
-    case 2:
-      updateBrightnessKnob(button, sm.options[2]);
-      break;
+  auto [save, save_file_name] = savedGameSelector(current_game_name);
+  if (save) {
+    gb::ScreenPixels last_screen = *interface->getLatestScreen();
+    auto data = SDModule::SavedGame{
+      .info = SDModule::SavedGameInfo{.screen = last_screen},
+      .ram_data = *std::move(ram),
+    };
+
+    // Save as new file
+    if (save_file_name.empty()) {
+      sd.newSavedGame(current_game_name, std::move(data));
+    }
+    // Overwrite other saved game
+    else {
+      sd.saveGame(current_game_name, save_file_name, std::move(data));
+    }
+  }
+  else {
+    return false;
   }
 
   return true;
 }
 
 
+std::tuple<bool, std::string> Program::savedGameSelector (const std::string &game, bool skip_if_no_saved) {
+  auto saved_games = sd.listSavedGames(game);
+  if (skip_if_no_saved and saved_games.empty()) {
+    return {true, ""};
+  }
+
+  auto sm = ScreenMenu{
+    .title = "Saved Games",
+    .options = {
+      "Back",
+      "New Game",
+    }
+  };
+  for (const auto &save : saved_games) {
+    sm.options.push_back(save.name);
+  }
+
+  int first = 0;
+  int selection = 0;
+  const int n_opts = sm.options.size();
+  bool entered = false;
+  gb::Button pressed;
+
+  display.clearScreen();
+
+  while (true) {
+    // Nice scrolling
+    if (n_opts > Display::maxMenuItems()) {
+      first = std::clamp(first, selection - 4, selection - 1);
+      first = std::clamp(first, 0, n_opts - int(Display::maxMenuItems()));
+    }
+    display.printMenu(sm, first, selection);
+    // Render miniature for game saves
+    if (selection > 1) {
+      display.printMiniature(&saved_games[selection-2].screen);
+    }
+    else {
+      gb::ScreenPixels black_screen;
+      for (auto &row : black_screen) {
+        row.fill(static_cast<gb::Byte>(gb::BWColors::BLACK));
+      }
+      display.printMiniature(&black_screen);
+    }
+    std::tie(entered, pressed) = handleMenuNavigation(n_opts, selection);
+    if (pressed == gb::Button::Start) {
+      if (selection == 0) {
+        return {false, ""}; // Back
+      }
+      else if (selection == 1) {
+        return {true, ""}; // New game
+      }
+      else {
+        return {true, saved_games[selection-2].name}; // Actual saved game file
+      }
+    }
+  }
+}
+
+
 bool Program::runEmulator (
-  const std::string &game_name
+  const std::string &game_name,
+  const std::string &save_name
 ) {
+  current_game_name = game_name;
   // Emulator setup
   auto interface = std::make_shared<ESP32Interface>();
   auto game_rom = sd.loadGame(game_name);
   if (game_rom == nullptr or game_rom->empty()) {
     return false;
   }
+  auto save_data = sd.loadSavedGame(game_name, save_name);
+  if (not save_name.empty() and save_data.ram_data.empty()) {
+    return false;
+  }
 
   bool exit_emu = false;
   display.clearScreen();
 
-  // TODO load saved game
-  emulator.emulate(interface, Program::config.emu_cfg, std::move(game_rom));
+  emulator.emulate(
+    interface,
+    Program::config.emu_cfg,
+    std::move(game_rom)
+    // std::make_unique<gb::GameRom>(save_data.ram_data)
+  );
   while (not exit_emu) {
     if (interface->newScreenAvailable()) {
       display.printScreen(interface->getLatestScreen());
@@ -324,7 +393,6 @@ void Program::updateBrightnessKnob (gb::Button button, std::string &knob_str) {
 
 
 void Program::gameSelectMenu () {
-  display.clearScreen();
   ScreenMenu sm = ScreenMenu{.title = "Select Game", .options = {"Back"}};
 
   if (not sd_init_ok) {
@@ -349,25 +417,34 @@ void Program::gameSelectMenu () {
     sm = Display::beautifyMenu(std::move(sm));
     int selection = 0;
     gb::Button button = gb::Button::A;
-    while (button != gb::Button::Start) {
-      std::tie(selection, button) = renderMenu(sm);
-    }
-    Audio::beep();
-    // Option 0 is back
-    if (selection == 0) {
-      return;
-    }
-    selection--;
-    if (not runEmulator(game_names[selection])) {
+    while (true) {
       display.clearScreen();
-      ScreenMenu error_sm = ScreenMenu{.title = "Error", .options = {"Back"}};
-      std::string msg = "Unable to load game";
-      int selection = 0;
-      gb::Button button = gb::Button::A;
       while (button != gb::Button::Start) {
-        std::tie(selection, button) = renderErrorMenu(error_sm, msg);
+        std::tie(selection, button) = renderMenu(sm);
       }
+      button = gb::Button::A; // Change action button
       Audio::beep();
+      // Option 0 is back
+      if (selection == 0) {
+        return;
+      }
+      std::string game_name = game_names[selection-1];
+      // Save game selector (if any)
+      auto [load, save_name] = savedGameSelector(game_name, true);
+      if (load) {
+        if (not runEmulator(game_name, save_name)) {
+          display.clearScreen();
+          ScreenMenu error_sm = ScreenMenu{.title = "Error", .options = {"Back"}};
+          std::string msg = "Unable to load game";
+          int selection_2 = 0;
+          gb::Button button = gb::Button::A;
+          while (button != gb::Button::Start) {
+            std::tie(selection_2, button) = renderErrorMenu(error_sm, msg);
+          }
+          Audio::beep();
+        }
+      }
+      
     }
   }
 }
@@ -377,7 +454,6 @@ std::pair<int, gb::Button> Program::renderMenu (const ScreenMenu& sm, int select
   int first = 0;
   const int n_opts = sm.options.size();
   bool entered = false;
-  gb::Byte prev_button_read = 0;
   gb::Button pressed;
 
   while (not entered) {

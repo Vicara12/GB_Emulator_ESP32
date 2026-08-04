@@ -25,6 +25,7 @@ class Program {
   static Preferences persistent;
   static SDModule sd;
   static EmulatorLauncher emulator;
+  static std::string current_game_name;
   static bool sd_init_ok;
 
   static void launch_ (void*);
@@ -34,7 +35,8 @@ class Program {
   static void storeCfg ();
 
   static bool runEmulator (
-    const std::string &game_name
+    const std::string &game_name,
+    const std::string &save_name
   );
 
   static void mainMenu ();
@@ -57,7 +59,12 @@ class Program {
 
   static bool handleEmuButton (std::shared_ptr<ESP32Interface> interface);
 
-  static bool saveGame (std::shared_ptr<ESP32Interface> interface);
+  static bool saveGameMenu (std::shared_ptr<ESP32Interface> interface);
+
+  static std::tuple<bool, std::string> savedGameSelector (
+    const std::string &game,
+    bool skip_if_no_saved = false
+  );
 
   static void updateVolumeKnob (gb::Button button, std::string &knob_str);
 

@@ -33,7 +33,7 @@ class SDModule {
       if (self->_busDepth++ == 0) {
         if (self->_releaseBus) self->_releaseBus();
         self->_sdSpi.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
-        SD.begin(SD_CS, self->_sdSpi, 20'000'000);
+        SD.begin(SD_CS, self->_sdSpi, 5'000'000);
       }
     }
     ~BusGuard () {
@@ -82,4 +82,5 @@ public:
 
   std::string newSavedGame (const std::string &game, SavedGame &&data);
 
+  bool saveGame (const std::string &game, const std::string &save, SavedGame &&data);
 };

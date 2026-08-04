@@ -133,7 +133,7 @@ void Display::clearScreen () {
 }
 
 
-void Display::printScreen (const gb::ScreenPixels* pixels) {
+void Display::moveScreenToBuffer (const gb::ScreenPixels* pixels) {
   uint16_t* raw_buffer = (uint16_t*)gb_screen->getBuffer();
   size_t buffer_idx = 0;
   for (size_t y = 0; y < gb::SCREEN_PX_H; y++) {
@@ -141,6 +141,16 @@ void Display::printScreen (const gb::ScreenPixels* pixels) {
       raw_buffer[buffer_idx++] = GB_COLOR[(*pixels)[y][x]];
     }
   }
+}
 
+
+void Display::printScreen (const gb::ScreenPixels* pixels) {
+  moveScreenToBuffer(pixels);
   gb_screen->pushRotateZoom(0, 0, 0, SCREEN_UPSCALE, SCREEN_UPSCALE);
+}
+
+
+void Display::printMiniature (const gb::ScreenPixels* pixels) {
+  moveScreenToBuffer(pixels);
+  gb_screen->pushSprite(width() - gb::SCREEN_PX_W, (height() - gb::SCREEN_PX_H)/2);
 }

@@ -48,7 +48,8 @@ void EmulatorLauncher::launch_ (void *) {
       gb::emulator<ESP32Interface, gb::BuildCfb::FastGraphics>(
         *interface,
         *cartridge_data,
-        std::move(emu_cfg)
+        std::move(emu_cfg),
+        std::move(save_game)
       );
     }
   }

@@ -114,7 +114,6 @@ std::vector<SDModule::SavedGameInfo> SDModule::listSavedGames (const std::string
   if (not SD.exists(dirPath.c_str())) {
     return saves;
   }
-
   File dir = SD.open(dirPath.c_str());
   if (not dir or not dir.isDirectory()) {
     return saves;
@@ -124,7 +123,8 @@ std::vector<SDModule::SavedGameInfo> SDModule::listSavedGames (const std::string
     if (not entry.isDirectory()) {
       std::string name = getBasename(stripLeadingSlash(entry.name()));
       if (endsWith(name, kSaveExtension)) {
-        File file = SD.open(entry.name(), FILE_READ);
+        std::string fullPath = dirPath + "/" + name;
+        File file = SD.open(fullPath.c_str(), FILE_READ);
         if (file) {
           saves.push_back(SavedGameInfo{
             .name = stripSuffix(name, kSaveExtension),
@@ -142,6 +142,7 @@ std::vector<SDModule::SavedGameInfo> SDModule::listSavedGames (const std::string
 
 
 gb::ScreenPixels SDModule::loadScreen (File &file) {
+  BusGuard guard(this);
   gb::ScreenPixels screen;
   for (auto &row : screen) {
     file.read(row.data(), row.size());
@@ -153,6 +154,10 @@ gb::ScreenPixels SDModule::loadScreen (File &file) {
 SDModule::SavedGame SDModule::loadSavedGame (const std::string &game, const std::string &save) {
   BusGuard guard(this);
   SavedGame result{};
+
+  if (save.empty()) {
+    return result;
+  }
 
   std::string path = savedGamePath(game, save);
   File file = SD.open(path.c_str(), FILE_READ);
@@ -204,12 +209,23 @@ std::string SDModule::newSavedGame (const std::string &game, SavedGame &&data) {
     }
   }
 
-  std::string newName = std::to_string(highest + 1);
-  std::string path = savedGamePath(game, newName);
+  std::string new_name = std::to_string(highest + 1);
+  data.info.name = new_name;
+  if (saveGame(game, new_name, std::move(data))) {
+    return new_name;
+  }
+
+  return "";
+}
+
+
+bool SDModule::saveGame (const std::string &game, const std::string &save, SavedGame &&data) {
+  BusGuard guard(this);
+  std::string path = savedGamePath(game, save);
 
   File file = SD.open(path.c_str(), FILE_WRITE);
   if (not file) {
-    return "";
+    return false;
   }
 
   for (const auto &row : data.info.screen) {
@@ -223,7 +239,7 @@ std::string SDModule::newSavedGame (const std::string &game, SavedGame &&data) {
   }
 
   file.close();
-  return newName;
+  return true;
 }
 
 
