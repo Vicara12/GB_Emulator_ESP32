@@ -250,8 +250,8 @@ bool Program::runEmulator (
   emulator.emulate(
     interface,
     Program::config.emu_cfg,
-    std::move(game_rom)
-    // std::make_unique<gb::GameRom>(save_data.ram_data)
+    std::move(game_rom),
+    std::make_unique<gb::GameRom>(save_data.ram_data)
   );
   while (not exit_emu) {
     if (interface->newScreenAvailable()) {
@@ -476,10 +476,12 @@ std::pair<int, gb::Button> Program::renderErrorMenu (const ScreenMenu& sm, const
   int selection = 0;
   gb::Button pressed;
 
+  display.clearScreen();
   while (not entered) {
     display.printError(sm, msg, selection);
     std::tie(entered, pressed) = handleMenuNavigation(n_opts, selection);
   }
+  display.clearScreen();
 
   return {selection, pressed};
 }
