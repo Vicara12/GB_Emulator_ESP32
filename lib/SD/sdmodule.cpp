@@ -141,10 +141,10 @@ std::vector<SDModule::SavedGameInfo> SDModule::listSavedGames (const std::string
 }
 
 
-gb::ScreenPixels SDModule::loadScreen (File &file) {
+std::unique_ptr<gb::ScreenPixels> SDModule::loadScreen (File &file) {
   BusGuard guard(this);
-  gb::ScreenPixels screen;
-  for (auto &row : screen) {
+  auto screen = std::make_unique<gb::ScreenPixels>();
+  for (auto &row : *screen) {
     file.read(row.data(), row.size());
   }
   return screen;
@@ -165,16 +165,17 @@ SDModule::SavedGame SDModule::loadSavedGame (const std::string &game, const std:
     return result;
   }
 
-  for (auto &row : result.info.screen) {
+  result.info.screen = std::make_unique<gb::ScreenPixels>();
+  for (auto &row : *result.info.screen) {
     file.read(row.data(), row.size());
   }
 
   uint32_t ramSize = 0;
   file.read(reinterpret_cast<uint8_t *>(&ramSize), sizeof(ramSize));
 
-  result.ram_data.resize(ramSize);
+  result.ram_data = std::make_unique<gb::GameRom>(ramSize);
   if (ramSize > 0) {
-    file.read(result.ram_data.data(), ramSize);
+    file.read(result.ram_data->data(), ramSize);
   }
 
   result.info.name = save;
@@ -228,14 +229,14 @@ bool SDModule::saveGame (const std::string &game, const std::string &save, Saved
     return false;
   }
 
-  for (const auto &row : data.info.screen) {
+  for (const auto &row : *data.info.screen) {
     file.write(row.data(), row.size());
   }
 
-  uint32_t ramSize = static_cast<uint32_t>(data.ram_data.size());
+  uint32_t ramSize = static_cast<uint32_t>(data.ram_data->size());
   file.write(reinterpret_cast<const uint8_t *>(&ramSize), sizeof(ramSize));
   if (ramSize > 0) {
-    file.write(data.ram_data.data(), ramSize);
+    file.write(data.ram_data->data(), ramSize);
   }
 
   file.close();

@@ -146,10 +146,10 @@ bool Program::saveGameMenu (std::shared_ptr<ESP32Interface> interface) {
 
   auto [save, save_file_name] = savedGameSelector(current_game_name);
   if (save) {
-    gb::ScreenPixels last_screen = *interface->getLatestScreen();
+    auto last_screen = std::make_unique<gb::ScreenPixels>(*interface->getLatestScreen());
     auto data = SDModule::SavedGame{
-      .info = SDModule::SavedGameInfo{.screen = last_screen},
-      .ram_data = *std::move(ram),
+      .info = SDModule::SavedGameInfo{.screen = std::move(last_screen)},
+      .ram_data = std::move(ram),
     };
 
     // Save as new file
@@ -203,7 +203,7 @@ std::tuple<bool, std::string> Program::savedGameSelector (const std::string &gam
     display.printMenu(sm, first, selection);
     // Render miniature for game saves
     if (selection > 1) {
-      display.printMiniature(&saved_games[selection-2].screen);
+      display.printMiniature(saved_games[selection-2].screen.get());
     }
     else {
       gb::ScreenPixels black_screen;
@@ -240,7 +240,7 @@ bool Program::runEmulator (
     return false;
   }
   auto save_data = sd.loadSavedGame(game_name, save_name);
-  if (not save_name.empty() and save_data.ram_data.empty()) {
+  if (not save_name.empty() and save_data.ram_data->empty()) {
     return false;
   }
 
@@ -251,7 +251,7 @@ bool Program::runEmulator (
     interface,
     Program::config.emu_cfg,
     std::move(game_rom),
-    std::make_unique<gb::GameRom>(save_data.ram_data)
+    std::move(save_data.ram_data)
   );
   while (not exit_emu) {
     if (interface->newScreenAvailable()) {

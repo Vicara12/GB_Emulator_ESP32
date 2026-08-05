@@ -52,18 +52,18 @@ class SDModule {
 
   std::string savedGamePath (const std::string &game, const std::string &save) const;
 
-  gb::ScreenPixels loadScreen (File &file);
+  std::unique_ptr<gb::ScreenPixels> loadScreen (File &file);
 
 public:
 
   struct SavedGameInfo {
     std::string name;
-    gb::ScreenPixels screen;
+    std::unique_ptr<gb::ScreenPixels> screen;
   };
 
   struct SavedGame {
     SavedGameInfo info;
-    std::vector<uint8_t> ram_data;
+    std::unique_ptr<gb::GameRom> ram_data;
   };
 
   bool init ();
