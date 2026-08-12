@@ -21,5 +21,7 @@ public:
 
   inline void playAudio (const gb::AudioPacket &ap) {Audio::pushData(ap);}
 
-  inline void informEmuRate (float r) {Serial.println(r);};
+  inline void informEmuRate (float r) {
+    // Serial.println(r);
+  };
 };

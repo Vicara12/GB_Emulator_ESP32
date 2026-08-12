@@ -26,7 +26,6 @@ class SDModule {
   std::function<void()> _acquireBus;
   int _busDepth = 0;
 
-
   struct BusGuard {
     SDModule *self;
     explicit BusGuard (SDModule *self) : self(self) {

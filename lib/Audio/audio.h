@@ -1,6 +1,6 @@
 #pragma once
 
-#include <mutex>
+#include <atomic>
 #include <math.h>
 #include <memory>
 #include <Arduino.h>
@@ -9,8 +9,6 @@
 
 
 class Audio {
-
-  using AudioBuffer = std::array<int16_t, 2*gb::AUDIO_BUFFER_SIZE>;
 
   static constexpr i2s_port_t I2S_NUM = I2S_NUM_0;
   // Hardware pin configs
@@ -36,10 +34,14 @@ class Audio {
     return buffer;
   }();
 
-  static std::mutex audio_mutex;
   static int16_t volume;
-  static std::array<std::unique_ptr<AudioBuffer>, 3> audio_buffers;
   static TaskHandle_t task_handler;
+  static std::array<int16_t, 8*2*gb::AUDIO_BUFFER_SIZE> audio_buffer;
+  static constexpr size_t MASK = audio_buffer.size() - 1;
+  static std::array<int16_t, gb::AUDIO_BUFFER_SIZE> playing_chunk;
+  static std::atomic<size_t> write_idx;
+  static std::atomic<size_t> read_idx;
+  static bool alive;
 
   static void launch_ (void*);
 
@@ -58,18 +60,23 @@ public:
   static void setVolume (int volume);
 
   static inline void pushData (const gb::AudioPacket &ap) {
-    for (size_t i = 0; i < gb::AUDIO_BUFFER_SIZE; i++) {
-      (*audio_buffers[2])[2*i]     = (int16_t(ap.buffer_l[i]) - 128)*Audio::volume;
-      (*audio_buffers[2])[2*i + 1] = (int16_t(ap.buffer_r[i]) - 128)*Audio::volume;
+    size_t r = read_idx.load(std::memory_order_acquire);
+    size_t w = write_idx.load(std::memory_order_relaxed);
+
+    size_t free_space = audio_buffer.size() - (w - r);
+    size_t to_write = std::min(ap.buffer_l.size() + ap.buffer_r.size(), free_space);
+
+    for (size_t i = 0; 2*i < to_write; i++) {
+      // Convert from uint8_t to int16_t in such a way that 0 -> int16 min and 255 -> int16 max
+      audio_buffer[w & MASK]       = (int16_t(ap.buffer_l[i]) - 128)*Audio::volume;
+      audio_buffer[(w + 1) & MASK] = (int16_t(ap.buffer_r[i]) - 128)*Audio::volume;
+      w += 2;
     }
-    { // Lock scope
-      std::lock_guard<std::mutex> lock(Audio::audio_mutex);
-      std::swap(audio_buffers[1], audio_buffers[2]);
-    }
-    if (Audio::task_handler != NULL) {
-      xTaskNotifyGive(Audio::task_handler); 
-    }
+
+    write_idx.store(w, std::memory_order_release);
   }
+
+  static bool fillPlayingChunk ();
 
   static void beep ();
 };

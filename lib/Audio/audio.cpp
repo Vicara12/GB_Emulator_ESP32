@@ -2,23 +2,44 @@
 #include <limits>
 
 
-std::mutex Audio::audio_mutex;
 int16_t Audio::volume;
-std::array<std::unique_ptr<Audio::AudioBuffer>, 3> Audio::audio_buffers;
+std::array<int16_t, 8*2*gb::AUDIO_BUFFER_SIZE> Audio::audio_buffer;
+std::array<int16_t, gb::AUDIO_BUFFER_SIZE> Audio::playing_chunk;
+alignas(64) std::atomic<size_t> Audio::write_idx{0};
+alignas(64) std::atomic<size_t> Audio::read_idx{0};
 TaskHandle_t Audio::task_handler;
+bool Audio::alive = false;
 
 
 void Audio::launch_ (void*) {
   init();
+  size_t time = micros();
 
   while (true) {
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY); // Wait until new data sample has been fed
-    { // Lock scope
-      std::lock_guard<std::mutex> lock(Audio::audio_mutex);
-      std::swap(audio_buffers[0], audio_buffers[1]);
+    if (fillPlayingChunk()) {
+      Audio::playBuffer(playing_chunk.data(), playing_chunk.size());
+    } else {
+      // Give the emulator some time to produce new audio chunks
+      delay((2 * 1000 * playing_chunk.size()) / gb::SAMPLE_RATE);
     }
-    Audio::playBuffer((*audio_buffers[0]).data(), (*audio_buffers[0]).size());
   }
+}
+
+
+bool Audio::fillPlayingChunk () {
+  size_t w = write_idx.load(std::memory_order_acquire);
+  size_t r = read_idx.load(std::memory_order_relaxed);
+  if (w != r) {
+    // Return a maximum of one sound buffer so as to not drain the margin in the audio queue
+    size_t to_read = std::min(w - r, size_t(gb::AUDIO_BUFFER_SIZE));
+
+    for (size_t i = 0; i < playing_chunk.size(); i++) {
+      playing_chunk[i] = audio_buffer[(r + i) & MASK];
+    }
+    read_idx.store(r + to_read, std::memory_order_release);
+    return true;
+  }
+  return false;
 }
 
 
@@ -52,10 +73,6 @@ void Audio::beep () {
 void Audio::init () {
   static_assert(gb::AUDIO_BUFFER_SIZE <= 1024, "Audio buffer size larger than 1024");
 
-  for (auto &buffer_ptr : Audio::audio_buffers) {
-    buffer_ptr = std::make_unique<AudioBuffer>();
-  }
-
   // Configure the I2S peripheral
   i2s_config_t i2s_config = {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
@@ -88,6 +105,10 @@ void Audio::init () {
 
 
 void Audio::launch (int core_id) {
+  if (alive) {
+    return;
+  }
+
   xTaskCreatePinnedToCore(
     Audio::launch_,
     "AudioTask",
@@ -97,6 +118,8 @@ void Audio::launch (int core_id) {
     &task_handler,
     core_id                // The Core ID to pin it to
   );
+
+  alive = true;
 }
 
 
@@ -105,10 +128,7 @@ void Audio::kill () {
     vTaskDelete(Audio::task_handler); 
     Audio::task_handler = NULL; 
   }
-
-  for (auto &buffer_ptr : Audio::audio_buffers) {
-    buffer_ptr = nullptr;
-  }
+  alive = false;
 }
 
 
