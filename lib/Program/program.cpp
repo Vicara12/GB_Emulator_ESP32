@@ -70,8 +70,8 @@ bool Program::emuPausedMenu (std::shared_ptr<ESP32Interface> interface) {
       "Exit"
     }
   };
-  updateVolumeKnob(gb::Button::A, sm.options[1]);
-  updateBrightnessKnob(gb::Button::A, sm.options[2]);
+  updateVolumeKnob(gb::Button::Start, sm.options[1]);
+  updateBrightnessKnob(gb::Button::Start, sm.options[2]);
   bool quit = false;
   bool exit_emu = false;
   int selection = 0;
@@ -79,10 +79,16 @@ bool Program::emuPausedMenu (std::shared_ptr<ESP32Interface> interface) {
 
   display.clearScreen();
   while (not quit) {
-    std::tie(selection, button) = renderMenu(sm, selection);
+    bool emu_button;
+    std::tie(selection, button, emu_button) = renderMenu(sm, selection);
+    if (emu_button or button == BACK_BUTTON) {
+      Audio::beep();
+      quit = true;
+      continue;
+    }
     switch(selection) {
       case 0:
-        if (button != gb::Button::Start) break;
+        if (button != ACTION_BUTTON) break;
         quit = true;
         break;
       case 1:
@@ -92,20 +98,20 @@ bool Program::emuPausedMenu (std::shared_ptr<ESP32Interface> interface) {
         updateBrightnessKnob(button, sm.options[2]);
         break;
       case 3:
-        if (button != gb::Button::Start) break;
+        if (button != ACTION_BUTTON) break;
         Audio::beep();
         saveGameMenu(interface);
         display.clearScreen();
         break;
       case 4:
-        if (button != gb::Button::Start) break;
+        if (button != ACTION_BUTTON) break;
         Audio::beep();
         // Only quit if game could be saved
         quit = saveGameMenu(interface);
         exit_emu = quit;
         break;
       case 5:
-        if (button != gb::Button::Start) break;
+        if (button != ACTION_BUTTON) break;
         Audio::beep();
         quit = true;
         exit_emu = true;
@@ -132,19 +138,11 @@ bool Program::saveGameMenu (std::shared_ptr<ESP32Interface> interface) {
   }
   display.clearScreen();
   if (ram->size() == 0) {
-    ScreenMenu error_sm = ScreenMenu{.title = "ERROR", .options = {"Back"}};
-    std::string msg = "Game can't be saved";
-    int selection = 0;
-    gb::Button button = gb::Button::A;
-    while (button != gb::Button::Start) {
-      std::tie(selection, button) = renderErrorMenu(error_sm, msg);
-    }
-    Audio::beep();
-    display.clearScreen();
+    errorMenu("Game can't be saved");
     return false;
   }
 
-  auto [save, save_file_name] = savedGameSelector(current_game_name);
+  auto [save, save_file_name, n_saves] = savedGameSelector(current_game_name);
   if (save) {
     auto last_screen = std::make_unique<gb::ScreenPixels>(*interface->getLatestScreen());
     auto data = SDModule::SavedGame{
@@ -169,16 +167,15 @@ bool Program::saveGameMenu (std::shared_ptr<ESP32Interface> interface) {
 }
 
 
-std::tuple<bool, std::string> Program::savedGameSelector (const std::string &game, bool skip_if_no_saved) {
+std::tuple<bool, std::string, int> Program::savedGameSelector (const std::string &game, bool skip_if_no_saved) {
   auto saved_games = sd.listSavedGames(game);
   if (skip_if_no_saved and saved_games.empty()) {
-    return {true, ""};
+    return {true, "", saved_games.size()};
   }
 
   auto sm = ScreenMenu{
     .title = "Saved Games",
     .options = {
-      "Back",
       "New Game",
     }
   };
@@ -190,6 +187,7 @@ std::tuple<bool, std::string> Program::savedGameSelector (const std::string &gam
   int selection = 0;
   const int n_opts = sm.options.size();
   bool entered = false;
+  bool emu_button;
   gb::Button pressed;
 
   display.clearScreen();
@@ -202,8 +200,8 @@ std::tuple<bool, std::string> Program::savedGameSelector (const std::string &gam
     }
     display.printMenu(sm, first, selection);
     // Render miniature for game saves
-    if (selection > 1) {
-      display.printMiniature(saved_games[selection-2].screen.get());
+    if (selection > 0) {
+      display.printMiniature(saved_games[selection-1].screen.get());
     }
     else {
       gb::ScreenPixels black_screen;
@@ -212,17 +210,17 @@ std::tuple<bool, std::string> Program::savedGameSelector (const std::string &gam
       }
       display.printMiniature(&black_screen);
     }
-    std::tie(entered, pressed) = handleMenuNavigation(n_opts, selection);
-    if (pressed == gb::Button::Start) {
+    std::tie(entered, pressed, emu_button) = handleMenuNavigation(n_opts, selection);
+    if (pressed == ACTION_BUTTON) {
       if (selection == 0) {
-        return {false, ""}; // Back
-      }
-      else if (selection == 1) {
-        return {true, ""}; // New game
+        return {true, "", saved_games.size()}; // New game
       }
       else {
-        return {true, saved_games[selection-2].name}; // Actual saved game file
+        return {true, saved_games[selection-1].name, saved_games.size()}; // Actual saved game file
       }
+    }
+    else if (pressed == BACK_BUTTON) {
+      return {false, "", saved_games.size()}; // Back
     }
   }
 }
@@ -300,8 +298,8 @@ void Program::mainMenu () {
   });
 
   while (true) {
-    auto [selection, button] = renderMenu(main_menu);
-    if (button != gb::Button::Start) {
+    auto [selection, button, emu_button] = renderMenu(main_menu);
+    if (button != ACTION_BUTTON) {
       continue;
     }
     switch(selection) {
@@ -326,22 +324,26 @@ void Program::optionsMenu () {
     .options = {
       "Volume",
       "Brightness",
-      "Skip logo",
-      "Back"
+      "Skip logo"
     }
   };
   // Format knob strings
-  updateVolumeKnob(gb::Button::A, options_menu.options[0]);
-  updateBrightnessKnob(gb::Button::A, options_menu.options[1]);
+  updateVolumeKnob(gb::Button::Start, options_menu.options[0]);
+  updateBrightnessKnob(gb::Button::Start, options_menu.options[1]);
   options_menu.options[2] = config.emu_cfg.skip_boot_room ? "[x] Skip logo" : "[ ] Skip logo";
   bool back = false;
+  bool emu_button;
 
   display.clearScreen();
   int selection = 0;
   gb::Button button;
 
   while (not back) {
-    std::tie(selection, button) = renderMenu(options_menu, selection);
+    std::tie(selection, button, emu_button) = renderMenu(options_menu, selection);
+    if (button == BACK_BUTTON) {
+      Audio::beep();
+      break;
+    }
     switch(selection) {
       case 0:
         updateVolumeKnob(button, options_menu.options[0]);
@@ -350,14 +352,10 @@ void Program::optionsMenu () {
         updateBrightnessKnob(button, options_menu.options[1]);
         break;
       case 2:
-        if (button == gb::Button::Start) config.emu_cfg.skip_boot_room = not config.emu_cfg.skip_boot_room;
+        if (button == ACTION_BUTTON) config.emu_cfg.skip_boot_room = not config.emu_cfg.skip_boot_room;
         else break;
         Audio::beep();
         options_menu.options[2] = config.emu_cfg.skip_boot_room ? "[x] Skip logo" : "[ ] Skip logo";
-        break;
-      case 3:
-        Audio::beep();
-        back = true;
         break;
     }
   }
@@ -393,21 +391,14 @@ void Program::updateBrightnessKnob (gb::Button button, std::string &knob_str) {
 
 
 void Program::gameSelectMenu () {
-  ScreenMenu sm = ScreenMenu{.title = "Select Game", .options = {"Back"}};
+  ScreenMenu sm = ScreenMenu{.title = "Select Game"};
 
   if (not sd_init_ok) {
     sd_init_ok = sd.init();
   }
 
   if (not sd_init_ok) {
-    sm.title = "ERROR";
-    std::string msg = "Unable to open SD";
-    int selection = 0;
-    gb::Button button = gb::Button::A;
-    while (button != gb::Button::Start) {
-      std::tie(selection, button) = renderErrorMenu(sm, msg);
-    }
-    Audio::beep();
+    errorMenu("Unable to open SD");
   }
   else {
     auto game_names = sd.listGames();
@@ -416,32 +407,29 @@ void Program::gameSelectMenu () {
     }
     sm = Display::beautifyMenu(std::move(sm));
     int selection = 0;
-    gb::Button button = gb::Button::A;
+    bool emu_button;
+    gb::Button button = gb::Button::Start;
     while (true) {
       display.clearScreen();
-      while (button != gb::Button::Start) {
-        std::tie(selection, button) = renderMenu(sm);
+      while (button != ACTION_BUTTON) {
+        std::tie(selection, button, emu_button) = renderMenu(sm);
+        if (button == BACK_BUTTON) {
+          Audio::beep();
+          return;
+        }
       }
-      button = gb::Button::A; // Change action button
+      button = gb::Button::Start; // Change action button
       Audio::beep();
-      // Option 0 is back
-      if (selection == 0) {
-        return;
-      }
-      std::string game_name = game_names[selection-1];
+      std::string game_name = game_names[selection];
       // Save game selector (if any)
-      auto [load, save_name] = savedGameSelector(game_name, true);
+      auto [load, save_name, n_saves] = savedGameSelector(game_name, true);
+      // Prevent double beep on games without saves
+      if (n_saves != 0) {
+        Audio::beep();
+      }
       if (load) {
         if (not runEmulator(game_name, save_name)) {
-          display.clearScreen();
-          ScreenMenu error_sm = ScreenMenu{.title = "Error", .options = {"Back"}};
-          std::string msg = "Unable to load game";
-          int selection_2 = 0;
-          gb::Button button = gb::Button::A;
-          while (button != gb::Button::Start) {
-            std::tie(selection_2, button) = renderErrorMenu(error_sm, msg);
-          }
-          Audio::beep();
+          errorMenu("Unable to load game");
         }
       }
       
@@ -450,10 +438,11 @@ void Program::gameSelectMenu () {
 }
 
 
-std::pair<int, gb::Button> Program::renderMenu (const ScreenMenu& sm, int selection) {
+std::tuple<int, gb::Button, bool> Program::renderMenu (const ScreenMenu& sm, int selection) {
   int first = 0;
   const int n_opts = sm.options.size();
   bool entered = false;
+  bool emu_button;
   gb::Button pressed;
 
   while (not entered) {
@@ -463,23 +452,27 @@ std::pair<int, gb::Button> Program::renderMenu (const ScreenMenu& sm, int select
       first = std::clamp(first, 0, n_opts - int(Display::maxMenuItems()));
     }
     display.printMenu(sm, first, selection);
-    std::tie(entered, pressed) = handleMenuNavigation(n_opts, selection);
+    std::tie(entered, pressed, emu_button) = handleMenuNavigation(n_opts, selection);
+    if (emu_button) {
+      return {selection, static_cast<gb::Button>(0), true};
+    }
   }
 
-  return {selection, pressed};
+  return {selection, pressed, emu_button};
 }
 
 
 std::pair<int, gb::Button> Program::renderErrorMenu (const ScreenMenu& sm, const std::string &msg) {
   const int n_opts = sm.options.size();
   bool entered = false;
+  bool emu_button;
   int selection = 0;
   gb::Button pressed;
 
   display.clearScreen();
   while (not entered) {
     display.printError(sm, msg, selection);
-    std::tie(entered, pressed) = handleMenuNavigation(n_opts, selection);
+    std::tie(entered, pressed, emu_button) = handleMenuNavigation(n_opts, selection);
   }
   display.clearScreen();
 
@@ -487,9 +480,10 @@ std::pair<int, gb::Button> Program::renderErrorMenu (const ScreenMenu& sm, const
 }
 
 
-std::pair<bool, gb::Button> Program::handleMenuNavigation(int n_opts, int &selection) {
+std::tuple<bool, gb::Button, bool> Program::handleMenuNavigation(int n_opts, int &selection) {
   bool action = false;
   bool entered = false;
+  bool emu_button = false;
   gb::Button pressed;
   gb::Byte prev_button_read = 0;
   
@@ -498,6 +492,9 @@ std::pair<bool, gb::Button> Program::handleMenuNavigation(int n_opts, int &selec
     gb::Byte buttons = Buttons::readPadButtons();
     gb::Byte falling_edge = (buttons ^ prev_button_read) & prev_button_read;
     prev_button_read = buttons;
+    if (Buttons::emuButtonPressed()) {
+      return {false, static_cast<gb::Button>(0), true};
+    }
     if (falling_edge != 0) {
       // Number of zeros to the right of the rightmost one
       int pos_one = __builtin_ctz(static_cast<unsigned int>(falling_edge));
@@ -521,5 +518,17 @@ std::pair<bool, gb::Button> Program::handleMenuNavigation(int n_opts, int &selec
     }
   }
 
-  return {entered, pressed};
+  return {entered, pressed, emu_button};
+}
+
+
+void Program::errorMenu (std::string msg) {
+  display.clearScreen();
+  ScreenMenu error_sm = ScreenMenu{.title = "ERROR", .options = {"Ok"}};
+  int selection = 0;
+  gb::Button button = gb::Button::Start;
+  while (button != ACTION_BUTTON and button != BACK_BUTTON) {
+    std::tie(selection, button) = renderErrorMenu(error_sm, msg);
+  }
+  Audio::beep();
 }

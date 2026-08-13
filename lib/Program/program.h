@@ -18,6 +18,8 @@ class Program {
   };
 
   static constexpr size_t PROGRAM_CORE = 0;
+  static constexpr auto ACTION_BUTTON = gb::Button::A;
+  static constexpr auto BACK_BUTTON = gb::Button::B;
 
   static Display display;
   static TaskHandle_t task_handler;
@@ -47,7 +49,7 @@ class Program {
 
   static bool emuPausedMenu (std::shared_ptr<ESP32Interface> interface);
 
-  static std::pair<int, gb::Button> renderMenu (const ScreenMenu& sm, int selection = 0);
+  static std::tuple<int, gb::Button, bool> renderMenu (const ScreenMenu& sm, int selection = 0);
 
   static std::pair<int, gb::Button> renderErrorMenu (const ScreenMenu& sm, const std::string &msg);
 
@@ -55,13 +57,13 @@ class Program {
     return std::string("<").append(value, '=').append(max - value, ' ') + ">";
   }
 
-  static std::pair<bool, gb::Button> handleMenuNavigation(int n_opts, int &selection);
+  static std::tuple<bool, gb::Button, bool> handleMenuNavigation(int n_opts, int &selection);
 
   static bool handleEmuButton (std::shared_ptr<ESP32Interface> interface);
 
   static bool saveGameMenu (std::shared_ptr<ESP32Interface> interface);
 
-  static std::tuple<bool, std::string> savedGameSelector (
+  static std::tuple<bool, std::string, int> savedGameSelector (
     const std::string &game,
     bool skip_if_no_saved = false
   );
@@ -69,6 +71,8 @@ class Program {
   static void updateVolumeKnob (gb::Button button, std::string &knob_str);
 
   static void updateBrightnessKnob (gb::Button button, std::string &knob_str);
+
+  static void errorMenu (std::string msg);
 
 public:
 
